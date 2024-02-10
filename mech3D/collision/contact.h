@@ -1,0 +1,157 @@
+/*
+	MIT License
+
+	Copyright (c) 2024 Ssebunya Umar
+
+	Permission is hereby granted, free of charge, to any person obtaining a copy
+	of this software and associated documentation files (the "Software"), to deal
+	in the Software without restriction, including without limitation the rights
+	to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+	copies of the Software, and to permit persons to whom the Software is
+	furnished to do so, subject to the following conditions:
+
+	The above copyright notice and this permission notice shall be included in all
+	copies or substantial portions of the Software.
+
+	THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+	IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+	FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+	AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+	LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+	OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+	SOFTWARE.
+*/
+
+//https://t.me/mechFizix - Telegram (if you have a question, remark or complaint)
+//@ssebunya_umar - X(twitter)
+
+#ifndef CONTACT_H
+#define CONTACT_H
+
+#include"collider.h"
+
+namespace mech {
+
+#define MAXIMUN_MANIFOLD_CONTACT_POINTS 8
+
+	//////////////////////////////////////////////////////////////////////////////////////////
+	enum class CollisionFlag : byte { NOTCOLLIDING = 1 << 0, PROXIMAL = 1 << 1, PENETRATING = 1 << 2};
+
+	//////////////////////////////////////////////////////////////////////////////////////////
+	struct HullVsHullContactCache {
+		Vec3 gjkAxis;
+		Vec3 center1 = nanVEC3;
+		Vec3 center2 = nanVEC3;
+		uint32 ID1 = -1;
+		uint16 refFace = -1;
+		uint16 incidentFace = -1;
+		byte cacheFlags = 0;
+		byte retention = 0;
+	};
+
+	//////////////////////////////////////////////////////////////////////////////////////////
+	struct ContactPoint {
+		Vec3 position[2];
+		Vec3 normal;
+		uint32 ID = -1;
+	};
+
+	//////////////////////////////////////////////////////////////////////////////////////////
+	struct ContactManifold {
+		ContactPoint contactPoints[MAXIMUN_MANIFOLD_CONTACT_POINTS] = {};
+		ColliderIdentifier colliderID1;
+		ColliderIdentifier colliderID2;
+		ColliderProperties properties1;
+		ColliderProperties properties2;
+		uint32 ID = -1;
+		CollisionFlag flag = CollisionFlag::NOTCOLLIDING;
+		byte numPoints = 0;
+
+		ContactManifold(const uint32 id, const ColliderIdentifier& collider1, const ColliderIdentifier& collider2)
+		{
+			this->ID = id;
+			this->colliderID1 = collider1;
+			this->colliderID2 = collider2;
+		}
+
+		void revert()
+		{
+			for (byte x = 0; x < this->numPoints; ++x) {
+				this->contactPoints[x].normal = -this->contactPoints[x].normal;
+
+				Vec3 temp = this->contactPoints[x].position[0];
+				this->contactPoints[x].position[0] = this->contactPoints[x].position[1];
+				this->contactPoints[x].position[1] = temp;
+			}
+		}
+
+		void enforce4Contacts()
+		{
+			StackArray<byte, 4> points(-1);
+			{
+				decimal l = -decimalMAX;
+				for (byte x = 0; x < this->numPoints; ++x) {
+					decimal p = magnitudeSq(this->contactPoints[x].position[1] - this->contactPoints[x].position[0]);
+					if (p > l) {
+						l = p;
+						points[0] = x;
+					}
+				}
+			}
+
+			{
+				decimal l = -decimalMAX;
+				for (byte x = 0; x < this->numPoints; ++x) {
+
+					if (points.find(x) == false) {
+						decimal d = magnitudeSq(this->contactPoints[points[0]].position[0] - this->contactPoints[x].position[0]);
+						if (d > l) {
+							l = d;
+							points[1] = x;
+						}
+					}
+				}
+			}
+
+			{
+				Vec3 faceNormal = crossProduct(this->contactPoints[1].position[0] - this->contactPoints[0].position[0], this->contactPoints[2].position[0] - this->contactPoints[0].position[0]);
+
+				decimal l1 = -decimalMAX;
+				decimal l2 = -decimalMAX;
+				for (byte x = 0; x < this->numPoints; ++x) {
+
+					if (points.find(x) == false) {
+						decimal d = decimal(0.5) * dotProduct(crossProduct(this->contactPoints[points[0]].position[0] - this->contactPoints[x].position[0], this->contactPoints[points[1]].position[0] - this->contactPoints[x].position[0]), faceNormal);
+
+						if (d < decimal(0.0)) {
+							if (d > l1) {
+								l1 = d;
+								points[2] = x;
+							}
+						}
+						else {
+							if (d > l2) {
+								l2 = d;
+								points[3] = x;
+							}
+						}
+					}
+				}
+			}
+
+			ContactPoint contactPoints[4];
+			for (byte x = 0; x < 4; ++x) {
+				assert(isAValidIndex(points[x]));
+				contactPoints[x] = this->contactPoints[points[x]];
+			}
+
+			this->numPoints = 4;
+			for (byte x = 0; x < 4; ++x) {
+				this->contactPoints[x] = contactPoints[x];
+			}
+		}
+	};
+}
+
+#endif
+

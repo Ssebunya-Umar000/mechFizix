@@ -1,0 +1,56 @@
+/*
+	MIT License
+
+	Copyright (c) 2024 Ssebunya Umar
+
+	Permission is hereby granted, free of charge, to any person obtaining a copy
+	of this software and associated documentation files (the "Software"), to deal
+	in the Software without restriction, including without limitation the rights
+	to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+	copies of the Software, and to permit persons to whom the Software is
+	furnished to do so, subject to the following conditions:
+
+	The above copyright notice and this permission notice shall be included in all
+	copies or substantial portions of the Software.
+
+	THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+	IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+	FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+	AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+	LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+	OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+	SOFTWARE.
+*/
+
+//https://t.me/mechFizix - Telegram (if you have a question, remark or complaint)
+//@ssebunya_umar - X(twitter)
+
+#ifndef PHYSICSOBJECT_H
+#define PHYSICSOBJECT_H
+
+#include"rigidBody.h"
+#include"../containers/stackArray.h"
+
+namespace mech {
+
+	struct PhysicsObject {
+
+		RigidBody rigidBody;
+		StackArray<uint32, 8> nodesIntersected; //StackArray<node index, ...
+		StackArray<uint32, 4> disabledCollisions; //StackArray<collider ID, ...
+		uint32 colliderID = -1;
+		uint32 objectIndex = -1;
+
+		PhysicsObject() {}
+
+		void initialise(PhysicsData* physicsData, const ColliderIdentifier& identifier, const decimal& density, const Vec3& pos);
+		void diableCollision(PhysicsData* physicsData, const uint32& otherIndex);
+		void addToIsland(PhysicsData* physicsData, const uint32& otherIndex);
+
+		bool isTerminated() { return this->nodesIntersected.empty(); }
+		ColliderIdentifier getIdentifier();
+	};
+}
+
+#endif
+
