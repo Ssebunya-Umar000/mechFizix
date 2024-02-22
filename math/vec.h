@@ -28,7 +28,7 @@
 #ifndef VEC_H
 #define VEC_H
 
-#include"array2D.h"
+#include"rawMatrix.h"
 
 namespace mech {
 
@@ -44,8 +44,8 @@ namespace mech {
 			struct {
 				decimal u, v;
 			};
-			Array2D<decimal, 2, 1, Alignment::columnMajor> mat;
-			//Array2D<decimal, 1, 2, Alignment::rowMajor> mat;
+			RawMatrix<decimal, 2, 1, Alignment::columnMajor> mat;
+			//RawMatrix<decimal, 1, 2, Alignment::rowMajor> mat;
 		};
 
 
@@ -74,6 +74,8 @@ namespace mech {
 
 		bool operator==(const Vec2& other) const { return this->mat == other.mat; }
 		bool operator!=(const Vec2& other) const { return this->mat != other.mat; }
+
+		String toString() const { return String("Vec2(") + this->mat.toString() + String(")"); }
 	};
 
 	inline static decimal magnitudeSq(const Vec2& v) {
@@ -91,8 +93,8 @@ namespace mech {
 			struct {
 				decimal x, y, z;
 			};
-			Array2D<decimal, 3, 1, Alignment::columnMajor> mat;
-			//Array2D<decimal, 1, 3, Alignment::rowMajor> mat;
+			RawMatrix<decimal, 3, 1, Alignment::columnMajor> mat;
+			//RawMatrix<decimal, 1, 3, Alignment::rowMajor> mat;
 		};
 
 
@@ -122,6 +124,8 @@ namespace mech {
 
 		bool operator==(const Vec3& other) const { return this->mat == other.mat; }
 		bool operator!=(const Vec3& other) const { return this->mat != other.mat; }
+
+		String toString() const { return String("Vec3(") + this->mat.toString() + String(")"); }
 	};
 
 #define XAXIS Vec3(decimal(1.0), decimal(0.0), decimal(0.0))
@@ -187,11 +191,20 @@ namespace mech {
 	inline static Vec3 getPerpendicularVector(const Vec3& v)
 	{
 		if (mathABS(v.x) > mathABS(v.y)) {
-			const decimal s = decimal(1.0) / mathSQRT(v.z * v.z + v.x * v.x);
+			return Vec3(v.z, decimal(0.0), -v.x);
+		}
+
+		return Vec3(decimal(0.0), -v.z, v.y);
+	}
+
+	inline static Vec3 getPerpendicularVectorNormalised(const Vec3& v)
+	{
+		if (mathABS(v.x) > mathABS(v.y)) {
+			decimal s = decimal(1.0) / mathSQRT(v.z * v.z + v.x * v.x);
 			return Vec3(v.z * s, decimal(0.0), -v.x * s);
 		}
 
-		const decimal s = decimal(1.0) / mathSQRT(v.z * v.z + v.y * v.y);
+		decimal s = decimal(1.0) / mathSQRT(v.z * v.z + v.y * v.y);
 		return Vec3(decimal(0.0), -v.z * s, v.y * s);
 	}
 
@@ -236,8 +249,8 @@ namespace mech {
 			struct {
 				decimal x, y, z, w;
 			};
-			Array2D<decimal, 4, 1, Alignment::columnMajor> mat;
-			//Array2D<decimal, 1, 4, Alignment::rowMajor> mat;
+			RawMatrix<decimal, 4, 1, Alignment::columnMajor> mat;
+			//RawMatrix<decimal, 1, 4, Alignment::rowMajor> mat;
 		};
 
 		Vec4() :x(decimal(0.0)), y(decimal(0.0)), z(decimal(0.0)), w(decimal(0.0)) {}
@@ -269,6 +282,8 @@ namespace mech {
 		bool operator!=(const Vec4& other) const { return this->mat != other.mat; }
 
 		Vec3 toVec3() const { return Vec3(this->x, this->y, this->z); }
+
+		String toString() const { return String("Vec4(") + this->mat.toString() + String(")"); }
 	};
 
 #define nanVEC4 Vec4(decimalNAN)

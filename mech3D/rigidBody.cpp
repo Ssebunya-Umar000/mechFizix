@@ -30,87 +30,77 @@
 #include"physicsData.h"
 
 namespace mech {
+
+	//////////////////////////////////////////////////////////////////////////////////////////////////
+	void transformConvexHull(PhysicsData* physicsData, const uint32& colliderIndex, const Transform3D& t) { physicsData->convexHullColliders[colliderIndex].transform(t); }
+	void transformSphere(PhysicsData* physicsData, const uint32& colliderIndex, const Transform3D& t) { physicsData->sphereColliders[colliderIndex].transform(t); }
+	void transformCapsule(PhysicsData* physicsData, const uint32& colliderIndex, const Transform3D& t) { physicsData->capsuleColliders[colliderIndex].transform(t); }
+
+	void (*transformFunctionPointers[3]) (PhysicsData*, const uint32&, const Transform3D&) = { transformConvexHull, transformSphere, transformCapsule };
+	//////////////////////////////////////////////////////////////////////////////////////////////////
+
+	RigidBodyConfigurations rbConfigurations;
 	
+	RigidBodyConfigurations* getRigidBodyConfigurations()
+	{
+		return &rbConfigurations;
+	}
+
+	RigidBody::RigidBody()
+	{
+		this->motion = rbConfigurations.maxMotion;
+	}
+
 	void RigidBody::update(PhysicsData* physicsData, const decimal& deltaTime)
 	{
 		this->deltaPosition += this->linearVelocity * deltaTime;
 		this->deltaOrientaion += this->angularVelocity * deltaTime;
 
-		this->prevTransform3D = this->transform;
-		
-		this->transform.position += this->deltaPosition;
-		this->transform.orientation = normalise(rotationQuaternion(this->deltaOrientaion) * this->transform.orientation);
-		this->transformCollider(physicsData, this->transform.toMatrix() * getInverse(this->prevTransform3D.toMatrix()));
-
-		if (this->flags & 0b00000001) {
+		if (this->canSleep()) {
 
 			decimal bias = mathPOW(decimal(0.5), deltaTime);
 			this->motion = bias * this->motion + (decimal(1.0) - bias) * (magnitudeSq(this->deltaPosition) + magnitudeSq(this->deltaOrientaion));
 
-			if (this->motion < physicsData->sleepEpsilon) {
-
-				this->linearVelocity = Vec3();
-				this->angularVelocity = Vec3();
-				this->flags &= 0b11111101;
-
+			if (this->motion < rbConfigurations.sleepEpsilon) {
+				this->deactivate();
 				return;
 			}
-			else if (this->motion > physicsData->maxMotion) {
-				this->motion = physicsData->maxMotion;
+			else if (this->motion > rbConfigurations.maxMotion) {
+				this->motion = rbConfigurations.maxMotion;
 			}
 		}
 
-		this->deltaPosition = Vec3();
-		this->deltaOrientaion = Vec3();
+		this->prevTransform = this->transform;
+		this->transform.position += this->deltaPosition;
+		this->transform.orientation = normalise(rotationQuaternion(this->deltaOrientaion) * this->transform.orientation);
+		transformFunctionPointers[(uint32)(this->colliderType)](physicsData, this->colliderIndex, this->transform * getInverse(this->prevTransform));
 
-		this->linearVelocity += (physicsData->gravity + this->forceAccumulated * this->invMass) * deltaTime;
+		this->linearVelocity += (rbConfigurations.gravity + this->forceAccumulated * this->invMass) * deltaTime;
 		this->angularVelocity += (this->invInertiaTensor * this->torqueAccumulated) * deltaTime;
+		this->linearVelocity *= mathPOW(rbConfigurations.linearDamping, deltaTime);
+		this->angularVelocity *= mathPOW(rbConfigurations.angularDamping, deltaTime);
 
-		this->linearVelocity *= mathPOW(physicsData->linearDamping, deltaTime);
-		this->angularVelocity *= mathPOW(physicsData->angularDamping, deltaTime);
-
-		this->forceAccumulated = Vec3();
-		this->torqueAccumulated = Vec3();
+		this->clearForces();
 	}
 
 	void RigidBody::subStep(PhysicsData* physicsData, const decimal& t)
 	{
-		Transform3D prev = this->transform;
-		this->transform = Transform3DPair(this->prevTransform3D, this->transform).interpolate(t);
-		this->transformCollider(physicsData, getInverse(prev.toMatrix()) * this->transform.toMatrix());
+		Transform3D trans = Transform3DRange(this->prevTransform, this->transform).interpolate(t);
+		this->transform = trans * this->transform;
+		transformFunctionPointers[(uint32)(this->colliderType)](physicsData, this->colliderIndex, trans);
 	}
 
-	void RigidBody::activate(PhysicsData* physicsData)
-	{
-		struct ActivateInternal {
-			static void fcn(RigidBody& rigidBody, const decimal& baseMotion)
-			{
-				rigidBody.motion = baseMotion;
-				rigidBody.flags |= 0b00000010;
-			}
-		};
-
-		if (isAValidIndex(this->islandIndex)) {
-			for (auto it = physicsData->islands[this->islandIndex].begin(), end = physicsData->islands[this->islandIndex].end(); it != end; ++it) {
-				ActivateInternal::fcn(physicsData->physicsObjects[it.data().second.objectIndex].rigidBody, physicsData->baseMotion);
-			}
-		}
-		else {
-			ActivateInternal::fcn(*this, physicsData->baseMotion);
-		}
-	}
-
-	void RigidBody::addForce(PhysicsData* physicsData, const Vec3& force)
+	void RigidBody::addForce(const Vec3& force)
 	{
 		this->forceAccumulated += force;
-		this->activate(physicsData);
+		this->activate();
 	}
 
-	void RigidBody::addForceAtPoint(PhysicsData* physicsData, const Vec3& force, const Vec3& point)
+	void RigidBody::addForceAtPoint(const Vec3& force, const Vec3& point)
 	{
 		this->forceAccumulated += force;
 		this->torqueAccumulated += crossProduct(point - this->transform.position, force);
-		this->activate(physicsData);
+		this->activate();
 	}
 
 	void RigidBody::updatePositionAndOrientaion(const Vec3& deltaPos, const Vec3& deltaOrient)
@@ -125,16 +115,31 @@ namespace mech {
 		this->angularVelocity += deltaAngVel;
 	}
 
-	void RigidBody::transformCollider(PhysicsData* physicsData, const Mat4x4& mat)
+	void RigidBody::activate()
 	{
-		if (this->colliderType == ColliderType::convexHull) {
-			physicsData->convexHullColliders[this->colliderIndex].transform(mat);
-		}
-		else if (this->colliderType == ColliderType::sphere) {
-			physicsData->sphereColliders[this->colliderIndex].transform(mat);
-		}
-		else if (this->colliderType == ColliderType::capsule) {
-			physicsData->capsuleColliders[this->colliderIndex].transform(mat);
-		}
+		if (this->isActive()) return;
+		this->motion = rbConfigurations.leastMotion;
+		this->flags |= 0b00000010;
+	}
+
+	void RigidBody::deactivate()
+	{
+		this->linearVelocity = Vec3();
+		this->angularVelocity = Vec3();
+		this->clearForces();
+		this->flags &= 0b11111101;
+	}
+
+	void RigidBody::setMotionToMax()
+	{
+		this->motion = rbConfigurations.maxMotion;
+	}
+
+	void RigidBody::clearForces()
+	{
+		this->forceAccumulated = Vec3();
+		this->torqueAccumulated = Vec3();
+		this->deltaPosition = Vec3();
+		this->deltaOrientaion = Vec3();
 	}
 }

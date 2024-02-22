@@ -41,6 +41,7 @@
 
 #include"algorithms/SAT.h"
 #include"algorithms/GJK.h"
+#include"../../math/transform.h"
 
 namespace mech {
 
@@ -162,7 +163,7 @@ namespace mech {
 	Plane ConvexHull::getFacePlane(const uint16& index) const
 	{
 		Vec3 normal = this->getFaceNormal(index);
-		return Plane(normal, dotProduct(normal, vertices[this->halfEdgeMesh.faces[index].faceVerts.front()]));
+		return Plane(normal, dotProduct(normal, vertices[this->halfEdgeMesh.faces[index].faceVerts[0]]));
 	}
 
 	HybridArray<Plane, 6, uint16> ConvexHull::getPlanes() const
@@ -364,6 +365,8 @@ namespace mech {
 
 	bool ConvexHull::intersects(const Triangle& triangle) const
 	{
+		//return GJKAlgorithm(*this, triangle, true).overlap; //inaccurate
+
 		Vec3 normal = crossProduct(triangle.b - triangle.a, triangle.c - triangle. a);
 
 		if (SATOverlap(*this, triangle, normal) == false) return false;
@@ -406,31 +409,20 @@ namespace mech {
 
 	bool ConvexHull::intersects(const LineSegment& lineSegment) const
 	{
-		HybridArray<Vec3, 6, uint16> normals = this->getNormals();
-		for (uint16 x = 0, len = normals.size(); x < len; ++x) {
-			if (SATOverlap(*this, lineSegment, normals[x]) == false) return false;
-		}
-
-		Vec3 dir = lineSegment.getDirection();
-		HybridArray<LineSegment, 12, uint16> edges = this->getEdges();
-		for (uint16 x = 0, len = edges.size(); x < len; ++x) {
-			if (SATOverlap(*this, lineSegment, crossProduct(dir, edges[x].getDirection())) == false) return false;
-		}
-
-		return true;
+		return GJKAlgorithm(*this, lineSegment, true).overlap;
 	}
 
-	void ConvexHull::transform(const Mat4x4& mat)
+	void ConvexHull::transform(const Transform3D& t)
 	{
 		for (uint16 i = 0, len = this->vertices.size(); i < len; i++) {
-			this->vertices[i] = mat * this->vertices[i];
+			this->vertices[i] = t * this->vertices[i];
 		}
 	}
 
-	ConvexHull ConvexHull::transformed(const Mat4x4& mat) const
+	ConvexHull ConvexHull::transformed(const Transform3D& t) const
 	{
 		ConvexHull c = *this;
-		c.transform(mat);
+		c.transform(t);
 		return c;
 	}
 }

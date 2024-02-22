@@ -33,18 +33,19 @@
 namespace mech {
 	
 	struct PhysicsMaterial {
-		decimal density;
-		decimal restitution;
-		decimal frictionSqrt;
+		decimal density = decimalNAN;
+		decimal restitution = decimalNAN;
+		decimal frictionSqrt = decimalNAN;
 
-		PhysicsMaterial(const decimal& d = decimal(0.0), const decimal& r = decimal(0.0), const decimal& f = decimal(0.0)) : density(d), restitution(r), frictionSqrt(f) {}
+		PhysicsMaterial() {}
+		PhysicsMaterial(const decimal& d, const decimal& r, const decimal& f) : density(d), restitution(r), frictionSqrt(f) {}
 	};
 
 #define IRONMATERIAL PhysicsMaterial(decimal(7.8), decimal(0.01), decimal(0.22))
 #define RUBBERMATERIAL PhysicsMaterial(decimal(1.3), decimal(0.6), decimal(0.24))
 #define PLASTICMATERIAL PhysicsMaterial(decimal(1.4), decimal(0.1), decimal(0.15))
 #define CONCRETEMATERIAL PhysicsMaterial(decimal(2.4), decimal(0.0001), decimal(0.4))
-#define GROUNDMATERIAL PhysicsMaterial(decimal(0.0), decimal(0.001), decimal(0.75))
+#define GROUNDMATERIAL PhysicsMaterial(decimalMAX, decimal(0.001), decimal(0.75))
 }
 
 #endif

@@ -44,7 +44,7 @@ namespace mech {
 	struct Ray;
 	struct LineSegment;
 
-	struct Mat4x4;
+	struct Transform3D;
 
 	//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 	//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -157,8 +157,23 @@ namespace mech {
 		bool intersects(const Ray& ray) const;
 		bool intersects(const LineSegment& lineSegment) const;
 
-		void transform(const Mat4x4& mat);
-		ConvexHull transformed(const Mat4x4& mat) const;
+		void transform(const Transform3D& t);
+		ConvexHull transformed(const Transform3D& t) const;
+
+		String toString() const
+		{
+			String string = String("ConvexHull::numOfVertices: ") + toString1(this->vertices.size()) + String(" (");
+			for (uint16 x = 0, len = this->vertices.size(); x < len; ++x) {
+				string += this->vertices[x].toString();
+				if (x < len - 1) {
+					string += String(", ");
+				}
+				else {
+					string += String(")");
+				}
+			}
+			return string;
+		}
 	};
 }
 

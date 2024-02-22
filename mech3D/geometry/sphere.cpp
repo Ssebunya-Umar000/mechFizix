@@ -40,6 +40,7 @@
 
 #include"algorithms/SAT.h"
 #include"algorithms/GJK.h"
+#include"../../math/transform.h"
 
 namespace mech {
 
@@ -188,15 +189,15 @@ namespace mech {
 		return magnitudeSq(this->center - lineSegment.closestPoint(this->center)) <= this->radius * this->radius;
 	}
 
-	void Sphere::transform(const Mat4x4& mat)
+	void Sphere::transform(const Transform3D& t)
 	{
-		this->center = mat * this->center;
+		this->center = t * this->center;
 	}
 
-	Sphere Sphere::transformed(const Mat4x4& mat) const
+	Sphere Sphere::transformed(const Transform3D& t) const
 	{
 		Sphere s = *this;
-		s.transform(mat);
+		s.transform(t);
 		return s;
 	}
 }

@@ -26,44 +26,55 @@
 //@ssebunya_umar - X(twitter)
 
 #include"physicsWorld.h"
+#include"../core/utilities.h"
 
 namespace mech {
 
-#define LARGE_VELOCITY_SQ decimal(4000.0)
+#define LARGE_VELOCITY_SQ decimal(3600.0)
 
 	PhysicsWorld::PhysicsWorld()
 	{
 		this->mConstraintSolver.physicsData = &this->mPhysicsData;
-		this->mBroadPhase.narrowPhase.physicsData = &this->mPhysicsData;
+	
+		this->mNarrowPhase.physicsData = &this->mPhysicsData;
+		
+		this->mBroadPhase.physicsData = &this->mPhysicsData;
+		this->mBroadPhase.narrowPhase = &this->mNarrowPhase;
+		this->mBroadPhase.constraintSolver = &this->mConstraintSolver;
+		
 		this->mCacheManager.physicsData = &this->mPhysicsData;
+
+		this->mPhysicsData.configurations.rigidBodyConfigs = getRigidBodyConfigurations();
+		this->mPhysicsData.configurations.constraintConfigs = &this->mConstraintSolver.configurations;
 	}
 	
 	void PhysicsWorld::update(const decimal& deltaTime)
 	{
+		PROFILE("PhysicsWorld::update");
+
 		for (auto it = this->mPhysicsData.physicsObjects.begin(), end = this->mPhysicsData.physicsObjects.end(); it != end;) {
 
 			auto temp = it;
 			++it;
 
-			if (temp.data().isTerminated()) {
-				this->mPhysicsData.physicsObjects.eraseDataAtIndex(temp.index());
-			}
-			else {
-				if (temp.data().rigidBody.isActive()) {
-				
-					temp.data().rigidBody.update(&this->mPhysicsData, deltaTime);
+			PhysicsObject& object = temp.data();
 
-					if (magnitudeSq(temp.data().rigidBody.linearVelocity + temp.data().rigidBody.angularVelocity) >= LARGE_VELOCITY_SQ) {
-						this->mBroadPhase.continousCollisionDetection(temp.data());
+			if (object.rigidBody.isActive()) {
+
+				object.rigidBody.update(&this->mPhysicsData, deltaTime);
+
+				if (object.rigidBody.isActive()) {
+					
+					if (magnitudeSq(object.rigidBody.linearVelocity) >= LARGE_VELOCITY_SQ) {
+						this->mBroadPhase.continousCollisionDetection(object);
 					}
 					else {
-						this->mPhysicsData.octree.repositionCollider(&this->mPhysicsData, temp.data().getIdentifier());
+						this->mBroadPhase.discreteCollisionDetection(object);
 					}
 				}
 			}
 		}
 
-		this->mBroadPhase.discreteCollisionDetection();
 		this->mConstraintSolver.solve(deltaTime);
 		this->mCacheManager.update();
 	}
@@ -76,8 +87,7 @@ namespace mech {
 	void PhysicsWorld::initialiseHeightField(const HeightField::Parameters& parameters, const PhysicsMaterial& material)
 	{
 		this->mPhysicsData.heightFieldCollider.collider.initialise(parameters);
-		this->mPhysicsData.heightFieldCollider.properties.restitution = material.restitution;
-		this->mPhysicsData.heightFieldCollider.properties.frictionSqrt = material.frictionSqrt;
+		this->mPhysicsData.heightFieldCollider.material = material;
 	}
 
 	uint32 PhysicsWorld::add(const Sphere& sphere, const PhysicsMaterial& material, const Vec3& pos)
@@ -85,9 +95,7 @@ namespace mech {
 		uint32 colliderIndex = this->mPhysicsData.sphereColliders.insert(SphereCollider(sphere));
 		uint32 objectIndex = this->mPhysicsData.physicsObjects.insert(PhysicsObject());
 		
-		this->mPhysicsData.sphereColliders[colliderIndex].properties.restitution = material.restitution;
-		this->mPhysicsData.sphereColliders[colliderIndex].properties.frictionSqrt = material.frictionSqrt;
-
+		this->mPhysicsData.sphereColliders[colliderIndex].material = material;
 		this->mPhysicsData.sphereColliders[colliderIndex].identifier.colliderIndex = colliderIndex;
 		this->mPhysicsData.sphereColliders[colliderIndex].identifier.objectIndex = objectIndex;
 
@@ -103,9 +111,7 @@ namespace mech {
 		uint32 colliderIndex = this->mPhysicsData.capsuleColliders.insert(CapsuleCollider(capsule));
 		uint32 objectIndex = this->mPhysicsData.physicsObjects.insert(PhysicsObject());
 
-		this->mPhysicsData.capsuleColliders[colliderIndex].properties.restitution = material.restitution;
-		this->mPhysicsData.capsuleColliders[colliderIndex].properties.frictionSqrt = material.frictionSqrt;
-
+		this->mPhysicsData.capsuleColliders[colliderIndex].material = material;
 		this->mPhysicsData.capsuleColliders[colliderIndex].identifier.colliderIndex = colliderIndex;
 		this->mPhysicsData.capsuleColliders[colliderIndex].identifier.objectIndex = objectIndex;
 
@@ -121,9 +127,7 @@ namespace mech {
 		uint32 colliderIndex = this->mPhysicsData.convexHullColliders.insert(ConvexHullCollider(convexHull));
 		uint32 objectIndex = this->mPhysicsData.physicsObjects.insert(PhysicsObject());
 
-		this->mPhysicsData.convexHullColliders[colliderIndex].properties.restitution = material.restitution;
-		this->mPhysicsData.convexHullColliders[colliderIndex].properties.frictionSqrt = material.frictionSqrt;
-
+		this->mPhysicsData.convexHullColliders[colliderIndex].material = material;
 		this->mPhysicsData.convexHullColliders[colliderIndex].identifier.colliderIndex = colliderIndex;
 		this->mPhysicsData.convexHullColliders[colliderIndex].identifier.objectIndex = objectIndex;
 
@@ -137,8 +141,7 @@ namespace mech {
 	void PhysicsWorld::add(const Sphere& sphere, const PhysicsMaterial& material)
 	{
 		uint32 index = this->mPhysicsData.sphereColliders.insert(SphereCollider(sphere));
-		this->mPhysicsData.sphereColliders[index].properties.restitution = material.restitution;
-		this->mPhysicsData.sphereColliders[index].properties.frictionSqrt = material.frictionSqrt;
+		this->mPhysicsData.sphereColliders[index].material = material;
 		this->mPhysicsData.sphereColliders[index].identifier.colliderIndex = index;
 
 		this->mPhysicsData.octree.add(&this->mPhysicsData, this->mPhysicsData.sphereColliders[index].identifier);
@@ -147,8 +150,7 @@ namespace mech {
 	void PhysicsWorld::add(const Capsule& capsule, const PhysicsMaterial& material)
 	{
 		uint32 index = this->mPhysicsData.capsuleColliders.insert(CapsuleCollider(capsule));
-		this->mPhysicsData.capsuleColliders[index].properties.restitution = material.restitution;
-		this->mPhysicsData.capsuleColliders[index].properties.frictionSqrt = material.frictionSqrt;
+		this->mPhysicsData.capsuleColliders[index].material = material;
 		this->mPhysicsData.capsuleColliders[index].identifier.colliderIndex = index;
 
 		this->mPhysicsData.octree.add(&this->mPhysicsData, this->mPhysicsData.capsuleColliders[index].identifier);
@@ -157,8 +159,7 @@ namespace mech {
 	void PhysicsWorld::add(const ConvexHull& convexHull, const PhysicsMaterial& material)
 	{
 		uint32 index = this->mPhysicsData.convexHullColliders.insert(ConvexHullCollider(convexHull));
-		this->mPhysicsData.convexHullColliders[index].properties.restitution = material.restitution;
-		this->mPhysicsData.convexHullColliders[index].properties.frictionSqrt = material.frictionSqrt;
+		this->mPhysicsData.convexHullColliders[index].material = material;
 		this->mPhysicsData.convexHullColliders[index].identifier.colliderIndex = index;
 
 		this->mPhysicsData.octree.add(&this->mPhysicsData, this->mPhysicsData.convexHullColliders[index].identifier);
@@ -167,63 +168,9 @@ namespace mech {
 	void PhysicsWorld::add(const TriangleMesh& mesh, const PhysicsMaterial& material)
 	{
 		uint32 index = this->mPhysicsData.triangleMeshColliders.insert(TriangleMeshCollider(mesh));
-		this->mPhysicsData.triangleMeshColliders[index].properties.restitution = material.restitution;
-		this->mPhysicsData.triangleMeshColliders[index].properties.frictionSqrt = material.frictionSqrt;
+		this->mPhysicsData.triangleMeshColliders[index].material = material;
 		this->mPhysicsData.triangleMeshColliders[index].identifier.colliderIndex = index;
 
 		this->mPhysicsData.octree.add(&this->mPhysicsData, this->mPhysicsData.triangleMeshColliders[index].identifier);
-	}
-
-	void PhysicsWorld::add(const HingeConstraint::Parameters& parameters)
-	{
-		if (parameters.disableCollisions == true) {
-			this->mPhysicsData.physicsObjects[parameters.object1].diableCollision(&this->mPhysicsData, parameters.object2);
-		}
-		this->mPhysicsData.hingeConstraints.insert(HingeConstraint(&this->mPhysicsData, parameters));
-	}
-
-	void PhysicsWorld::add(const ConeConstraint::Parameters& parameters)
-	{
-		if (parameters.disableCollisions == true) {
-			this->mPhysicsData.physicsObjects[parameters.object1].diableCollision(&this->mPhysicsData, parameters.object2);
-		}
-		this->mPhysicsData.coneConstraints.insert(ConeConstraint(&this->mPhysicsData, parameters));
-	}
-
-	void PhysicsWorld::add(const MotorConstraint::Parameters& parameters)
-	{
-		if (parameters.disableCollisions == true) {
-			this->mPhysicsData.physicsObjects[parameters.object1].diableCollision(&this->mPhysicsData, parameters.object2);
-		}
-		this->mPhysicsData.motorConstraints.insert(MotorConstraint(&this->mPhysicsData, parameters));
-	}
-
-	bool PhysicsWorld::isObjectIntheWorld(const uint32& objectIndex)
-	{
-		return this->mPhysicsData.physicsObjects.isIndexOccupied(objectIndex);
-	}
-
-	void PhysicsWorld::removePhysicsObject(const uint32& objectIndex)
-	{
-		assert(this->mPhysicsData.physicsObjects.isIndexOccupied(objectIndex));
-		this->mPhysicsData.physicsObjects.eraseDataAtIndex(objectIndex);
-	}
-
-	Mat4x4 PhysicsWorld::getObjectTransformationMatrix(const uint32& objectIndex)
-	{
-		assert(this->mPhysicsData.physicsObjects.isIndexOccupied(objectIndex));
-		return this->mPhysicsData.physicsObjects[objectIndex].rigidBody.getTransformMatrix();
-	}
-	
-	void PhysicsWorld::addForceToRigidBody(const uint32& objectIndex, const Vec3& force)
-	{
-		assert(this->mPhysicsData.physicsObjects.isIndexOccupied(objectIndex));
-		this->mPhysicsData.physicsObjects[objectIndex].rigidBody.addForce(&this->mPhysicsData, force);
-	}
-
-	void PhysicsWorld::addForceToRigidBodyAtaPoint(const uint32& objectIndex, const Vec3& force, const Vec3& point)
-	{
-		assert(this->mPhysicsData.physicsObjects.isIndexOccupied(objectIndex));
-		this->mPhysicsData.physicsObjects[objectIndex].rigidBody.addForceAtPoint(&this->mPhysicsData, force, point);
 	}
 }

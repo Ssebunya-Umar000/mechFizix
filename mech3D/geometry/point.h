@@ -28,7 +28,7 @@
 #ifndef POINT_H
 #define POINT_H
 
-#include"../../math/matrix.h"
+#include"../../math/transform.h"
 
 namespace mech {
 
@@ -38,10 +38,13 @@ namespace mech {
 		Point(const Vec3& vec) : Vec3(vec) {}
 		Point(const decimal& x, const decimal& y, const decimal& z) : Vec3(x, y, z) {}
 
-		Vec3 getSupportPoint(const Vec3& direction) const { return Vec3(this->x, this->y, this->z); }
+		Vec3 getSupportPoint(const Vec3& direction) const { return *this; }
+		void getSupportPoints(const Vec3& direction, Vec3& min, Vec3& max) const { min = *this; max = *this; }
 
-		void transform(const Mat4x4& mat) { *this = mat * Vec3(this->x, this->y, this->z); }
-		Point transformed(const Mat4x4& mat) const { return mat * Vec3(this->x, this->y, this->z); }
+		void transform(const Transform3D& t) { *this = t * Vec3(this->x, this->y, this->z); }
+		Point transformed(const Transform3D& t) const { return t * Vec3(this->x, this->y, this->z); }
+
+		String toString() const { return String("Point(") + this->mat.toString() + String(")"); }
 	};
 }
 

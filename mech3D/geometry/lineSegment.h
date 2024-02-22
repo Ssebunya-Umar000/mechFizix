@@ -43,7 +43,7 @@ namespace mech {
 	struct Line;
 	struct Ray;
 
-	struct Mat4x4;
+	struct Transform3D;
 	
 	struct LineSegment {
 		Vec3 start;
@@ -81,8 +81,10 @@ namespace mech {
 		bool intersects(const Ray& ray) const;
 		bool intersects(const LineSegment& lineSegment) const;
 
-		void transform(const Mat4x4& mat);
-		LineSegment transformed(const Mat4x4& mat) const;
+		void transform(const Transform3D& t);
+		LineSegment transformed(const Transform3D& t) const;
+
+		String toString() const { return String("LineSegment(start:") + this->start.toString() + String(" end:") + this->end.toString() + String(")"); }
 	};
 }
 

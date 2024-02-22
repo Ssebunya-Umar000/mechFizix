@@ -45,30 +45,30 @@ namespace mech {
 	{
 		PhysicsObject& otherObject = physicsData->physicsObjects[otherIndex];
 
-		if (isAValidIndex(this->rigidBody.islandIndex) == false && isAValidIndex(otherObject.rigidBody.islandIndex) == false) {
+		if (isAValidIndex(this->islandIndex) == false && isAValidIndex(otherObject.islandIndex) == false) {
 
-			this->rigidBody.islandIndex = otherObject.rigidBody.islandIndex = physicsData->islands.insert(Island());
-			physicsData->islands[this->rigidBody.islandIndex].insert(Pair<uint32, ColliderIdentifier>(this->colliderID, this->getIdentifier()));
-			physicsData->islands[otherObject.rigidBody.islandIndex].insert(Pair<uint32, ColliderIdentifier>(otherObject.colliderID, otherObject.getIdentifier()));
+			this->islandIndex = otherObject.islandIndex = physicsData->islands.insert(AVLTree<Pair<uint32, ColliderIdentifier>, uint32>());
+			physicsData->islands[this->islandIndex].insert(Pair<uint32, ColliderIdentifier>(this->colliderID, this->getIdentifier()));
+			physicsData->islands[otherObject.islandIndex].insert(Pair<uint32, ColliderIdentifier>(otherObject.colliderID, otherObject.getIdentifier()));
 		}
-		else if (this->rigidBody.islandIndex != otherObject.rigidBody.islandIndex) {
+		else if (this->islandIndex != otherObject.islandIndex) {
 
-			if (isAValidIndex(this->rigidBody.islandIndex) == true && isAValidIndex(otherObject.rigidBody.islandIndex) == true) {
+			if (isAValidIndex(this->islandIndex) == true && isAValidIndex(otherObject.islandIndex) == true) {
 
-				uint32 index = otherObject.rigidBody.islandIndex;
-				for (auto it = physicsData->islands[otherObject.rigidBody.islandIndex].begin(), end = physicsData->islands[otherObject.rigidBody.islandIndex].end(); it != end; ++it) {
-					physicsData->islands[this->rigidBody.islandIndex].insert(it.data());
-					physicsData->physicsObjects[it.data().second.objectIndex].rigidBody.islandIndex = this->rigidBody.islandIndex;
+				uint32 index = otherObject.islandIndex;
+				for (auto it = physicsData->islands[otherObject.islandIndex].begin(), end = physicsData->islands[otherObject.islandIndex].end(); it != end; ++it) {
+					physicsData->islands[this->islandIndex].insert(it.data());
+					physicsData->physicsObjects[it.data().second.objectIndex].islandIndex = this->islandIndex;
 				}
 				physicsData->islands.eraseDataAtIndex(index);
 			}
-			else if (isAValidIndex(this->rigidBody.islandIndex) == true) {
-				physicsData->islands[this->rigidBody.islandIndex].insert(Pair<uint32, ColliderIdentifier>(otherObject.colliderID, otherObject.getIdentifier()));
-				otherObject.rigidBody.islandIndex = this->rigidBody.islandIndex;
+			else if (isAValidIndex(this->islandIndex) == true) {
+				physicsData->islands[this->islandIndex].insert(Pair<uint32, ColliderIdentifier>(otherObject.colliderID, otherObject.getIdentifier()));
+				otherObject.islandIndex = this->islandIndex;
 			}
 			else {
-				physicsData->islands[otherObject.rigidBody.islandIndex].insert(Pair<uint32, ColliderIdentifier>(this->colliderID, this->getIdentifier()));
-				this->rigidBody.islandIndex = otherObject.rigidBody.islandIndex;
+				physicsData->islands[otherObject.islandIndex].insert(Pair<uint32, ColliderIdentifier>(this->colliderID, this->getIdentifier()));
+				this->islandIndex = otherObject.islandIndex;
 			}
 		}
 	}
@@ -77,9 +77,9 @@ namespace mech {
 	{
 		ColliderIdentifier id;
 		id.colliderIndex = this->rigidBody.colliderIndex;
+		id.type = this->rigidBody.colliderType;
 		id.ID = this->colliderID;
 		id.objectIndex = this->objectIndex;
-		id.type = this->rigidBody.colliderType;
 
 		return id;
 	}
@@ -146,27 +146,25 @@ namespace mech {
 		this->objectIndex = identifier.objectIndex;
 		this->rigidBody.colliderType = identifier.type;
 		this->rigidBody.colliderIndex = identifier.colliderIndex;
-		this->rigidBody.motion = physicsData->maxMotion;
 
 		this->disabledCollisions.pushBack(this->colliderID);
 
-		decimal mass = 0;
-
+		decimal mass;
 		if (this->rigidBody.colliderType == ColliderType::convexHull) {
 
-			physicsData->convexHullColliders[this->rigidBody.colliderIndex].transform(translationMatrix(pos));
+			physicsData->convexHullColliders[this->rigidBody.colliderIndex].transform(Transform3D(pos));
 			mass = density * physicsData->convexHullColliders[this->rigidBody.colliderIndex].getVolume();
 			this->rigidBody.setTensor(calculateTensor(mass, physicsData->convexHullColliders[this->rigidBody.colliderIndex].collider.vertices.toDynamicArray()));
 		}
-		if (this->rigidBody.colliderType == ColliderType::sphere) {
+		else if (this->rigidBody.colliderType == ColliderType::sphere) {
 
-			physicsData->sphereColliders[this->rigidBody.colliderIndex].transform(translationMatrix(pos));
+			physicsData->sphereColliders[this->rigidBody.colliderIndex].transform(Transform3D(pos));
 			mass = density * physicsData->sphereColliders[this->rigidBody.colliderIndex].getVolume();
 			this->rigidBody.setTensor(calculateTensor(mass, &physicsData->sphereColliders[this->rigidBody.colliderIndex].collider));
 		}
-		if (this->rigidBody.colliderType == ColliderType::capsule) {
+		else if (this->rigidBody.colliderType == ColliderType::capsule) {
 
-			physicsData->capsuleColliders[this->rigidBody.colliderIndex].transform(translationMatrix(pos));
+			physicsData->capsuleColliders[this->rigidBody.colliderIndex].transform(Transform3D(pos));
 			mass = density * physicsData->capsuleColliders[this->rigidBody.colliderIndex].getVolume();
 			this->rigidBody.setTensor(calculateTensor(density, &physicsData->capsuleColliders[this->rigidBody.colliderIndex].collider));
 		}

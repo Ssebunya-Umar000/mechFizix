@@ -35,12 +35,13 @@
 #include"../geometry/polygon.h"
 #include"../geometry/triangleMesh.h"
 #include"../heightField.h"
-#include"../../math/matrix.h"
+#include"../../core/material.h"
+#include"../../math/transform.h"
 
 namespace mech {
 
 	//////////////////////////////////////////////////////////////////////////////////////////////////////////
-	enum class ColliderType : byte { noType = 0, convexHull = 1 << 0, sphere = 1 << 1, capsule = 1 << 2, triangleMesh = 1 << 3, heightField = 1 << 4 };
+	enum class ColliderType : byte { convexHull = 0, sphere = 1, capsule = 2, triangleMesh = 3, heightField = 4, noType = 5 };
 
 	//////////////////////////////////////////////////////////////////////////////////////////////////////////
 	struct ColliderIdentifier {
@@ -50,41 +51,46 @@ namespace mech {
 		ColliderType type = ColliderType::noType;
 
 		ColliderIdentifier() {}
-		ColliderIdentifier(const ColliderType& t) : type(t) { static uint32 colliderCount = 0; this->ID = colliderCount; ++colliderCount; }
+		ColliderIdentifier(const ColliderType& t) : type(t)
+		{ 
+			static uint32 colliderCount = 0;
+			this->ID = colliderCount;
+			++colliderCount;
+		}
 	};
 
 	//////////////////////////////////////////////////////////////////////////////////////////////////////////
-	//these are used by the contact solver
-	struct ColliderProperties {
-		decimal restitution = decimalNAN;
-		decimal frictionSqrt = decimalNAN;
-	};
-
+	//////////////////////////////////////////////////////////////////////////////////////////////////////////
 	//////////////////////////////////////////////////////////////////////////////////////////////////////////
 	struct ConvexHullCollider {
+
+		AABB bound = AABB(nanVEC3, nanVEC3);
+		PhysicsMaterial material;
 		ColliderIdentifier identifier;
-		ColliderProperties properties;
-		AABB bound;
 		ConvexHull collider;
+		Vec3 com;
+		decimal convexRadius = decimalNAN;
 
 		ConvexHullCollider() {}
-		
 		ConvexHullCollider(const ConvexHull& convexHull) : collider(convexHull), identifier(ColliderType::convexHull)
 		{
 			this->bound = this->collider.toAABB();
+			this->com = this->collider.getCentroid();
+			this->convexRadius = magnitude(this->bound.getCenter() - this->bound.max);
 		}
 
-		void transform(const Mat4x4& mat) 
+		void transform(const Transform3D& t)
 		{
-			this->collider.vertices[0] = mat * this->collider.vertices[0];
-			
+			this->com = t * this->com;
+			this->collider.vertices[0] = t * this->collider.vertices[0];
+
 			this->bound.max = this->collider.vertices[0];
 			this->bound.min = this->collider.vertices[0];
-			
+
 			for (uint32 i = 1, len = this->collider.vertices.size(); i < len; ++i) {
-				
-				this->collider.vertices[i] = mat * this->collider.vertices[i];
-				
+
+				this->collider.vertices[i] = t * this->collider.vertices[i];
+
 				this->bound.max = maxVec(this->collider.vertices[i], this->bound.max);
 				this->bound.min = minVec(this->collider.vertices[i], this->bound.min);
 			}
@@ -94,6 +100,7 @@ namespace mech {
 		{
 			decimal volume = decimal(0.0);
 			for (uint32 x = 0, len = this->collider.halfEdgeMesh.faces.size(); x < len; ++x) {
+
 				Polygon face = this->collider.getFacePolygon(x);
 				volume += dotProduct(face.vertices[0], face.getNormal()) * face.calculateArea();
 			}
@@ -102,67 +109,72 @@ namespace mech {
 	};
 
 	//////////////////////////////////////////////////////////////////////////////////////////////////////////
+	//////////////////////////////////////////////////////////////////////////////////////////////////////////
+	//////////////////////////////////////////////////////////////////////////////////////////////////////////
 	struct SphereCollider {
+
+		AABB bound = AABB(nanVEC3, nanVEC3);
+		PhysicsMaterial material;
 		ColliderIdentifier identifier;
-		ColliderProperties properties;
-		AABB bound;
 		Sphere collider;
 
 		SphereCollider() {}
-		
 		SphereCollider(const Sphere& sphere) : collider(sphere), identifier(ColliderType::sphere)
 		{
 			this->bound = this->collider.toAABB();
 		}
 
-		void transform(const Mat4x4& mat)
+		void transform(const Transform3D& t)
 		{
-			this->collider.center = mat * this->collider.center;
+			this->collider.center = t * this->collider.center;
 			this->bound = this->collider.toAABB();
 		}
 
-		decimal getVolume()
-		{
-			return decimal(4.0) * mathPI * this->collider.radius * this->collider.radius * this->collider.radius / decimal(3.0);
-		}
+		decimal getVolume() { return decimal(4.0) * mathPI * this->collider.radius * this->collider.radius * this->collider.radius / decimal(3.0); } 
 	};
 
 	//////////////////////////////////////////////////////////////////////////////////////////////////////////
+	//////////////////////////////////////////////////////////////////////////////////////////////////////////
+	//////////////////////////////////////////////////////////////////////////////////////////////////////////
 	struct CapsuleCollider {
+
+		AABB bound = AABB(nanVEC3, nanVEC3);
+		PhysicsMaterial material;
 		ColliderIdentifier identifier;
-		ColliderProperties properties;
-		AABB bound;
 		Capsule collider;
+		Vec3 com;
+		decimal convexRadius = decimalNAN;
 
 		CapsuleCollider() {}
-		
 		CapsuleCollider(const Capsule& capsule) : collider(capsule), identifier(ColliderType::capsule)
 		{
 			this->bound = this->collider.toAABB();
+			this->com = this->collider.capsuleLine.getCenter();
+			this->convexRadius = magnitude(this->bound.getCenter() - this->bound.max);
 		}
 
-		void transform(const Mat4x4& mat)
+		void transform(const Transform3D& t)
 		{
-			this->collider.pointA = mat * this->collider.pointA;
-			this->collider.pointB = mat * this->collider.pointB;
+			this->collider.pointA = t * this->collider.pointA;
+			this->collider.pointB = t * this->collider.pointB;
+			this->com = t * this->com;
 			this->bound = this->collider.toAABB();
 		}
 
-		decimal getVolume()
-		{
-			return mathPI * this->collider.radius * this->collider.radius * this->collider.capsuleLine.getLength() + decimal(4.0) * mathPI * this->collider.radius * this->collider.radius * this->collider.radius / decimal(3.0);
-		}
+		decimal getVolume() { return mathPI * this->collider.radius * this->collider.radius * this->collider.capsuleLine.getLength() + decimal(4.0) * mathPI * this->collider.radius * this->collider.radius * this->collider.radius / decimal(3.0); } 
 	};
 
 	//////////////////////////////////////////////////////////////////////////////////////////////////////////
+	//////////////////////////////////////////////////////////////////////////////////////////////////////////
+	//////////////////////////////////////////////////////////////////////////////////////////////////////////
 	struct TriangleMeshCollider {
+
+		AABB bound = AABB(nanVEC3, nanVEC3);
+		PhysicsMaterial material;
 		ColliderIdentifier identifier;
-		ColliderProperties properties;
-		AABB bound;
 		TriangleMesh collider;
 
 		TriangleMeshCollider() {}
-		
 		TriangleMeshCollider(const TriangleMesh& mesh) : collider(mesh), identifier(ColliderType::triangleMesh)
 		{
 			this->bound = this->collider.bvh.nodes[this->collider.bvh.parentNode].bound;
@@ -170,9 +182,12 @@ namespace mech {
 	};
 
 	//////////////////////////////////////////////////////////////////////////////////////////////////////////
+	//////////////////////////////////////////////////////////////////////////////////////////////////////////
+	//////////////////////////////////////////////////////////////////////////////////////////////////////////
 	struct HeightFieldCollider {
+
+		PhysicsMaterial material;
 		ColliderIdentifier identifier;
-		ColliderProperties properties;
 		HeightField collider;
 
 		HeightFieldCollider() : identifier(ColliderType::heightField) {}

@@ -39,7 +39,6 @@ namespace mech {
 
 	//////////////////////////////////////////////////////////////////////////////////////////
 	struct HullVsHullContactCache {
-		Vec3 gjkAxis;
 		Vec3 center1 = nanVEC3;
 		Vec3 center2 = nanVEC3;
 		uint32 ID1 = -1;
@@ -61,8 +60,8 @@ namespace mech {
 		ContactPoint contactPoints[MAXIMUN_MANIFOLD_CONTACT_POINTS] = {};
 		ColliderIdentifier colliderID1;
 		ColliderIdentifier colliderID2;
-		ColliderProperties properties1;
-		ColliderProperties properties2;
+		PhysicsMaterial material1;
+		PhysicsMaterial material2;
 		uint32 ID = -1;
 		CollisionFlag flag = CollisionFlag::NOTCOLLIDING;
 		byte numPoints = 0;
@@ -85,13 +84,24 @@ namespace mech {
 			}
 		}
 
-		void enforce4Contacts()
+		void enforce4Contacts(const Vec3& center1)
 		{
+			Vec3 faceNormal1;
+			{
+				Vec3 average;
+				for (byte x = 0; x < this->numPoints; ++x) {
+					average += this->contactPoints[x].position[0];
+				}
+				average /= this->numPoints;
+
+				faceNormal1 = average - center1;
+			}
+
 			StackArray<byte, 4> points(-1);
 			{
 				decimal l = -decimalMAX;
 				for (byte x = 0; x < this->numPoints; ++x) {
-					decimal p = magnitudeSq(this->contactPoints[x].position[1] - this->contactPoints[x].position[0]);
+					decimal p = dotProduct(faceNormal1, this->contactPoints[x].position[0] - center1);
 					if (p > l) {
 						l = p;
 						points[0] = x;
@@ -114,14 +124,12 @@ namespace mech {
 			}
 
 			{
-				Vec3 faceNormal = crossProduct(this->contactPoints[1].position[0] - this->contactPoints[0].position[0], this->contactPoints[2].position[0] - this->contactPoints[0].position[0]);
-
 				decimal l1 = -decimalMAX;
 				decimal l2 = -decimalMAX;
 				for (byte x = 0; x < this->numPoints; ++x) {
 
 					if (points.find(x) == false) {
-						decimal d = decimal(0.5) * dotProduct(crossProduct(this->contactPoints[points[0]].position[0] - this->contactPoints[x].position[0], this->contactPoints[points[1]].position[0] - this->contactPoints[x].position[0]), faceNormal);
+						decimal d = dotProduct(crossProduct(this->contactPoints[points[0]].position[0] - this->contactPoints[x].position[0], this->contactPoints[points[1]].position[0] - this->contactPoints[x].position[0]), faceNormal1);
 
 						if (d < decimal(0.0)) {
 							if (d > l1) {
@@ -139,15 +147,15 @@ namespace mech {
 				}
 			}
 
-			ContactPoint contactPoints[4];
+			ContactPoint newPoints[4];
 			for (byte x = 0; x < 4; ++x) {
 				assert(isAValidIndex(points[x]));
-				contactPoints[x] = this->contactPoints[points[x]];
+				newPoints[x] = this->contactPoints[points[x]];
 			}
 
 			this->numPoints = 4;
 			for (byte x = 0; x < 4; ++x) {
-				this->contactPoints[x] = contactPoints[x];
+				this->contactPoints[x] = newPoints[x];
 			}
 		}
 	};

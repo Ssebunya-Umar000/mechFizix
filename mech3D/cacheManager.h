@@ -71,6 +71,9 @@ namespace mech {
 					}
 				}
 			}
+
+			this->physicsData->contactConstraints.shallowClear();
+			this->physicsData->finishedCollisions.shallowClear();
 		}
 	};
 }

@@ -54,7 +54,8 @@ namespace mech {
 		void warmStart(StackArray<RigidBody*, 2>& bodies)
 		{
 			for (uint32 x = 0; x < 2; ++x) if (bodies[x]) {
-				bodies[x]->updateLinearAndAngularVelocity(Vec3(), this->invIxAxis[x] * this->totalLambda * (x == 0 ? -1 : 1));
+				decimal sign = x == 0 ? decimal(-1.0) : decimal(1.0);
+				bodies[x]->updateLinearAndAngularVelocity(Vec3(), this->invIxAxis[x] * this->totalLambda * sign);
 			}
 		}
 
@@ -72,7 +73,8 @@ namespace mech {
 			lambda = this->totalLambda - temp;
 
 			for (uint32 x = 0; x < 2; ++x) if (bodies[x]) {
-				bodies[x]->updateLinearAndAngularVelocity(Vec3(), this->invIxAxis[x] * lambda * (x == 0 ? -1 : 1));
+				decimal sign = x == 0 ? decimal(-1.0) : decimal(1.0);
+				bodies[x]->updateLinearAndAngularVelocity(Vec3(), this->invIxAxis[x] * lambda * sign);
 			}
 		}
 
@@ -80,7 +82,8 @@ namespace mech {
 		{
 			decimal lambda = -this->invEffectiveMass * BaumgarteFactor * C;
 			for (uint32 x = 0; x < 2; ++x) if (bodies[x]) {
-				bodies[x]->updatePositionAndOrientaion(Vec3(), this->invIxAxis[x] * lambda * (x == 0 ? -1 : 1));
+				decimal sign = x == 0 ? decimal(-1.0) : decimal(1.0);
+				bodies[x]->updatePositionAndOrientaion(Vec3(), this->invIxAxis[x] * lambda * sign);
 			}
 		}
 

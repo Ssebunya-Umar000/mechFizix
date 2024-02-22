@@ -45,8 +45,19 @@ namespace mech {
 	struct Ray;
 	struct LineSegment;
 
-	struct Mat4x4;
+	struct Transform3D;
 
+	///////////////////////////////////////////////////////////////////////////////////////////////////////////
+	struct FatTriangle {
+		Vec3 vertices[6] = {};
+
+		Vec3 getSupportPoint(const Vec3& direction) const;
+
+		void transform(const Transform3D& t);
+		FatTriangle transformed(const Transform3D& t) const;
+	};
+
+	///////////////////////////////////////////////////////////////////////////////////////////////////////////
 	struct Triangle {
 		
 		union {
@@ -62,6 +73,7 @@ namespace mech {
 
 		Plane toPlane() const;
 		Polygon toPolygon() const;
+		FatTriangle toFatTriangle() const;
 
 		decimal calculateArea() const;
 
@@ -92,10 +104,12 @@ namespace mech {
 		bool intersects(const Ray& ray) const;
 		bool intersects(const LineSegment& lineSegment) const;
 
-		void transform(const Mat4x4& mat);
-		Triangle transformed(const Mat4x4& mat) const;
+		void transform(const Transform3D& t);
+		Triangle transformed(const Transform3D& t) const;
 
 		Vec3 clip(const LineSegment& lineSegment) const;
+
+		String toString() const { return String("Triangle(a:") + this->a.toString() + String(" b:") + this->b.toString() + String(" c:") + this->c.toString() + String(")"); }
 	};
 }
 

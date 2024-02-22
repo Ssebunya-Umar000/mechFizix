@@ -33,15 +33,16 @@ namespace mech {
 
 	HingeConstraint::HingeConstraint(PhysicsData* physicsData, const Parameters& parameters)
 	{
-		this->objectIndex1 = parameters.object1;
-		this->objectIndex2 = parameters.object2;
+		this->objectIndex[0] = parameters.object1;
+		this->objectIndex[1] = parameters.object2;
 
 		this->limitsMax = parameters.limitsMax >= decimal(0.0) && parameters.limitsMax <= mathPI ? parameters.limitsMax : decimal(0.0);
 		this->limitsMin = parameters.limitsMin <= decimal(0.0) && parameters.limitsMin >= -mathPI ? parameters.limitsMin : decimal(0.0);
 
 		StackArray<RigidBody*, 2> bodies;
-		bodies[0] = &physicsData->physicsObjects[this->objectIndex1].rigidBody;
-		bodies[1] = isAValidIndex(this->objectIndex2) ? &physicsData->physicsObjects[this->objectIndex2].rigidBody : nullptr;
+		for (byte x = 0; x < 2; ++x) if (isAValidIndex(this->objectIndex[x])) {
+			bodies[x] = &physicsData->physicsObjects[this->objectIndex[x]].rigidBody;
+		}
 
 		Mat4x4 invT1 = getInverse(bodies[0]->getTransformMatrix());
 		this->localSpacePoint[0] = invT1 * parameters.anchorPoint;
@@ -69,14 +70,24 @@ namespace mech {
 		this->invInitialOrientation = normalise((bodies[1] ? getConjugate(bodies[1]->transform.orientation) : IDENTITY_QUATERNION) * this->invInitialOrientation * bodies[0]->transform.orientation);
 	}
 
+	bool HingeConstraint::isValid(PhysicsData* physicsData)
+	{
+		for (byte x = 0; x < 2; ++x) if (isAValidIndex(this->objectIndex[x])) {
+			if (physicsData->physicsObjects.isIndexOccupied(this->objectIndex[x]) == false) {
+				return false;
+			}
+		}
+
+		return true;
+	}
+
 	void HingeConstraint::warmStart(PhysicsData* physicsData)
 	{
 		StackArray<RigidBody*, 2> bodies;
-		bodies[0] = &physicsData->physicsObjects[this->objectIndex1].rigidBody;
-		bodies[1] = isAValidIndex(this->objectIndex2) ? &physicsData->physicsObjects[this->objectIndex2].rigidBody : nullptr;
-
 		bool active[2] = { false, false };
-		for (uint32 x = 0; x < 2; ++x) if (bodies[x]) {
+		
+		for (byte x = 0; x < 2; ++x) if (isAValidIndex(this->objectIndex[x])) {
+			bodies[x] = &physicsData->physicsObjects[this->objectIndex[x]].rigidBody;
 			active[x] = bodies[x]->isActive();
 		}
 
@@ -87,7 +98,7 @@ namespace mech {
 			StackArray<Quaternion, 2> orient(IDENTITY_QUATERNION);
 			for (uint32 x = 0; x < 2; ++x) if (bodies[x]) {
 				orient[x] = bodies[x]->transform.orientation;
-				if (!active[x]) bodies[x]->activate(physicsData);
+				if (active[x] == false) bodies[x]->activate();
 			}
 
 			this->pointConstraint.initialise(bodies, this->localSpacePoint, orient);
@@ -133,8 +144,9 @@ namespace mech {
 		if (this->isActive) {
 
 			StackArray<RigidBody*, 2> bodies;
-			bodies[0] = &physicsData->physicsObjects[this->objectIndex1].rigidBody;
-			bodies[1] = isAValidIndex(this->objectIndex2) ? &physicsData->physicsObjects[this->objectIndex2].rigidBody : nullptr;
+			for (byte x = 0; x < 2; ++x) if (isAValidIndex(this->objectIndex[x])) {
+				bodies[x] = &physicsData->physicsObjects[this->objectIndex[x]].rigidBody;
+			}
 
 			this->pointConstraint.solveVelocity(bodies);
 			if (solvePosition) {

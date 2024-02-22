@@ -40,9 +40,40 @@
 
 #include"algorithms/SAT.h"
 #include"algorithms/GJK.h"
+#include"../../math/transform.h"
 
 namespace mech {
 
+	/////////////////////////////////////////////////////////////////////////////////////////////////////
+	Vec3 FatTriangle::getSupportPoint(const Vec3& direction) const
+	{
+		byte index = -1;
+		decimal maxDot = -decimalMAX;
+		for (byte x = 0; x < 6; ++x) {
+			decimal d = dotProduct(direction, this->vertices[x]);
+			if (d > maxDot) {
+				maxDot = d;
+				index = x;
+			}
+		}
+		return this->vertices[index];
+	}
+
+	void FatTriangle::transform(const Transform3D& t)
+	{
+		for (byte x = 0; x < 6; ++x) {
+			this->vertices[x] = t * this->vertices[x];
+		}
+	}
+
+	FatTriangle FatTriangle::transformed(const Transform3D& t) const
+	{
+		FatTriangle ft = *this;
+		ft.transform(t);
+		return ft;
+	}
+
+	/////////////////////////////////////////////////////////////////////////////////////////////////////
 	Plane Triangle::toPlane() const
 	{
 		Vec3 normal = this->getNormal();
@@ -52,6 +83,22 @@ namespace mech {
 	Polygon Triangle::toPolygon() const
 	{
 		return Polygon(DynamicArray<Vec3, byte>(this->vertices, 3));
+	}
+
+	FatTriangle Triangle::toFatTriangle() const
+	{
+		FatTriangle ft;
+
+		ft.vertices[0] = this->vertices[0];
+		ft.vertices[1] = this->vertices[1];
+		ft.vertices[2] = this->vertices[2];
+
+		Vec3 thickness = -this->getNormal() * decimal(0.5);
+		for (byte x = 0; x < 3; ++x) {
+			ft.vertices[x + 3] = this->vertices[x] + thickness;
+		}
+
+		return ft;
 	}
 
 	decimal Triangle::calculateArea() const
@@ -294,18 +341,18 @@ namespace mech {
 		return true;
 	}
 
-	void Triangle::transform(const Mat4x4& mat)
+	void Triangle::transform(const Transform3D& t)
 	{
-		this->a = mat * this->a;
-		this->b = mat * this->b;
-		this->c = mat * this->c;
+		this->a = t * this->a;
+		this->b = t * this->b;
+		this->c = t * this->c;
 	}
 
-	Triangle Triangle::transformed(const Mat4x4& mat) const
+	Triangle Triangle::transformed(const Transform3D& t) const
 	{
-		Triangle t = *this;
-		t.transform(mat);
-		return t;
+		Triangle triangle = *this;
+		triangle.transform(t);
+		return triangle;
 	}
 
 	Vec3 Triangle::clip(const LineSegment& lineSegment) const

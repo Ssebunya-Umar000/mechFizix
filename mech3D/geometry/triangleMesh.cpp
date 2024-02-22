@@ -58,7 +58,7 @@ namespace mech {
 				for (byte x = 0; x < 8; ++x) {
 
 					uint32 childIndex = this->bvh->nodes.size();
-					this->bvh->nodes.pushBack(Node(this->bvh->nodes[nodeIndex].bound.partition8(x)));
+					this->bvh->nodes.pushBack(Node(this->bvh->nodes[nodeIndex].bound.partitionTo8(x)));
 					this->bvh->nodes[nodeIndex].children.pushBack(childIndex);
 					BVH::Node* newNode = &this->bvh->nodes.back();
 					newNode->parent = nodeIndex;

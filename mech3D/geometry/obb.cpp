@@ -40,6 +40,7 @@
 
 #include"algorithms/SAT.h"
 #include"algorithms/GJK.h"
+#include"../../math/transform.h"
 
 namespace mech {
 
@@ -375,16 +376,18 @@ namespace mech {
 		return tmin * tmin <= magnitudeSq(lineSegment.getDirection());
 	}
 
-	void OBB::transform(const Mat4x4& mat)
+	void OBB::transform(const Transform3D& t)
 	{
-		this->center = mat * this->center;
-		this->orientation = mat.toMat3x3() * this->orientation;
+		this->center = t * this->center;
+		this->orientation.setColumn(0, normalise(t.orientation * this->orientation.getColumn(0)));
+		this->orientation.setColumn(1, normalise(t.orientation * this->orientation.getColumn(1)));
+		this->orientation.setColumn(2, normalise(t.orientation * this->orientation.getColumn(2)));
 	}
 
-	OBB OBB::transformed(const Mat4x4& mat) const
+	OBB OBB::transformed(const Transform3D& t) const
 	{
 		OBB o = *this;
-		o.transform(mat);
+		o.transform(t);
 		return o;
 	}
 }

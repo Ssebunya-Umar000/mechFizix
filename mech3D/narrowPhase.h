@@ -31,6 +31,7 @@
 #include"physicsData.h"
 #include"geometry/plane.h"
 #include"geometry/algorithms/GJK.h"
+#include"../core/utilities.h"
 
 namespace mech {
 
@@ -80,10 +81,6 @@ namespace mech {
 				manifold.flag = CollisionFlag::PENETRATING;
 
 				manifold.contactPoints[manifold.numPoints].normal = normalise(closest - sphere.center);
-				if (dotProduct(manifold.contactPoints[manifold.numPoints].normal, closest - sphere.center) < decimal(0.0)) {
-					manifold.contactPoints[manifold.numPoints].normal = -manifold.contactPoints[manifold.numPoints].normal;
-				}
-
 				manifold.contactPoints[manifold.numPoints].position[0] = sphere.center + manifold.contactPoints[manifold.numPoints].normal * sphere.radius;
 				manifold.contactPoints[manifold.numPoints].position[1] = closest;
 				manifold.contactPoints[manifold.numPoints].ID = 1;
@@ -91,41 +88,17 @@ namespace mech {
 			}
 		}
 
-		void generateMeshContacts(const Sphere& sphere, const HybridArray<Triangle, 24, uint16>& triangles, ContactManifold& manifold)
+		void generateContacts(const Sphere& sphere, const HybridArray<Triangle, 24, uint16>& triangles, ContactManifold& manifold)
 		{
 			for (uint32 x = 0, len = triangles.size(); x < len; ++x) {
 
 				if (manifold.numPoints == MAXIMUM_CONTACT_POINTS) break;
 
-				if (sphere.intersects(triangles[x])) {
+				Vec3 closest = triangles[x].closestPoint(sphere.center);
 
-					Vec3 closest = triangles[x].closestPoint(sphere.center);
-
-					if (magnitudeSq(closest - sphere.center) < sphere.radius * sphere.radius) {
-
-						manifold.flag = CollisionFlag::PENETRATING;
-
-						manifold.contactPoints[manifold.numPoints].normal = -triangles[x].getNormal();
-						manifold.contactPoints[manifold.numPoints].position[0] = sphere.center + manifold.contactPoints[manifold.numPoints].normal * sphere.radius;
-						manifold.contactPoints[manifold.numPoints].position[1] = closest;
-						manifold.contactPoints[manifold.numPoints].ID = 1;
-						++manifold.numPoints;
-					}
-				}
-			}
-		}
-
-		void generateTerrainContacts(const Sphere& sphere, const HybridArray<Triangle, 24, uint16>& triangles, ContactManifold& manifold)
-		{
-			for (uint32 x = 0, len = triangles.size(); x < len; ++x) {
-
-				if (manifold.numPoints == MAXIMUM_CONTACT_POINTS) break;
-
-				if (sphere.intersects(triangles[x])) {
+				if (magnitudeSq(closest - sphere.center) < sphere.radius * sphere.radius) {
 
 					manifold.flag = CollisionFlag::PENETRATING;
-
-					Vec3 closest = triangles[x].closestPoint(sphere.center);
 
 					manifold.contactPoints[manifold.numPoints].normal = -triangles[x].getNormal();
 					manifold.contactPoints[manifold.numPoints].position[0] = sphere.center + manifold.contactPoints[manifold.numPoints].normal * sphere.radius;
@@ -145,84 +118,25 @@ namespace mech {
 
 				manifold.flag = CollisionFlag::PENETRATING;
 
-				Vec3 dir1 = capsule1.capsuleLine.getDirection();
-				Vec3 dir2 = capsule2.capsuleLine.getDirection();
-				if (almostEqual(dotProduct(crossProduct(dir1, dir2), capsule1.pointA - capsule2.pointA), decimal(0.0))) {
+				if (almostEqual(dotProduct(crossProduct(capsule1.capsuleLine.getDirection(), capsule2.capsuleLine.getDirection()), capsule1.pointA - capsule2.pointA), decimal(0.0))) {
 
-					if (magnitudeSq(dir1) > magnitudeSq(dir2)) {
+					Vec3 cA1 = capsule1.capsuleLine.closestPoint(capsule2.pointA);
+					Vec3 cA2 = capsule1.capsuleLine.closestPoint(cA1);
 
-						Vec3 n = normalise(dir1);
+					manifold.contactPoints[manifold.numPoints].normal = normalise(cA2 - cA1);
+					manifold.contactPoints[manifold.numPoints].position[0] = cA1 + manifold.contactPoints[manifold.numPoints].normal * capsule1.radius;
+					manifold.contactPoints[manifold.numPoints].position[1] = cA2 - manifold.contactPoints[manifold.numPoints].normal * capsule2.radius;
+					manifold.contactPoints[manifold.numPoints].ID = 1;
+					++manifold.numPoints;
 
-						Plane plane1 = Plane(n, dotProduct(capsule1.pointA, n));
-						Plane plane2 = Plane(n, dotProduct(capsule1.pointB, n));
+					Vec3 cB1 = capsule1.capsuleLine.closestPoint(capsule2.pointB);
+					Vec3 cB2 = capsule1.capsuleLine.closestPoint(cB1);
 
-						Vec3 pt1 = plane1.clip(capsule2.capsuleLine);
-						if (nanVec(pt1) == false) {
-
-							if (capsule2.contains(capsule1.pointA)) {
-								manifold.contactPoints[manifold.numPoints].normal = normalise(capsule1.pointA - pt1);
-							}
-							else {
-								manifold.contactPoints[manifold.numPoints].normal = normalise(pt1 - capsule1.pointA);
-							}
-							manifold.contactPoints[manifold.numPoints].position[0] = capsule1.pointA + manifold.contactPoints[manifold.numPoints].normal * capsule1.radius;
-							manifold.contactPoints[manifold.numPoints].position[1] = pt1 - manifold.contactPoints[manifold.numPoints].normal * capsule2.radius;
-							manifold.contactPoints[manifold.numPoints].ID = 1;
-							++manifold.numPoints;
-						}
-
-						Vec3 pt2 = plane2.clip(capsule2.capsuleLine);
-						if (nanVec(pt2) == false) {
-
-							if (capsule2.contains(capsule1.pointB)) {
-								manifold.contactPoints[manifold.numPoints].normal = normalise(capsule1.pointB - pt2);
-							}
-							else {
-								manifold.contactPoints[manifold.numPoints].normal = normalise(pt2 - capsule1.pointB);
-							}
-							manifold.contactPoints[manifold.numPoints].position[0] = capsule1.pointB + manifold.contactPoints[manifold.numPoints].normal * capsule1.radius;
-							manifold.contactPoints[manifold.numPoints].position[1] = pt2 - manifold.contactPoints[manifold.numPoints].normal * capsule2.radius;
-							manifold.contactPoints[manifold.numPoints].ID = 2;
-							++manifold.numPoints;
-						}
-					}
-					else {
-
-						Vec3 n = normalise(dir2);
-
-						Plane plane1 = Plane(n, dotProduct(capsule2.pointA, n));
-						Plane plane2 = Plane(n, dotProduct(capsule2.pointB, n));
-
-						Vec3 pt1 = plane1.clip(capsule1.capsuleLine);
-						if (nanVec(pt1) == false) {
-
-							if (capsule2.contains(pt1)) {
-								manifold.contactPoints[manifold.numPoints].normal = normalise(pt1 - capsule2.pointA);
-							}
-							else {
-								manifold.contactPoints[manifold.numPoints].normal = normalise(capsule2.pointA - pt1);
-							}
-							manifold.contactPoints[manifold.numPoints].position[0] = pt1 + manifold.contactPoints[manifold.numPoints].normal * capsule1.radius;
-							manifold.contactPoints[manifold.numPoints].position[1] = capsule2.pointA - manifold.contactPoints[manifold.numPoints].normal * capsule2.radius;
-							manifold.contactPoints[manifold.numPoints].ID = 3;
-							++manifold.numPoints;
-						}
-
-						Vec3 pt2 = plane2.clip(capsule1.capsuleLine);
-						if (nanVec(pt2) == false) {
-
-							if (capsule2.contains(pt2)) {
-								manifold.contactPoints[manifold.numPoints].normal = normalise(pt2 - capsule2.pointB);
-							}
-							else {
-								manifold.contactPoints[manifold.numPoints].normal = normalise(capsule2.pointB - pt2);
-							}
-							manifold.contactPoints[manifold.numPoints].position[0] = pt2 + manifold.contactPoints[manifold.numPoints].normal * capsule1.radius;
-							manifold.contactPoints[manifold.numPoints].position[1] = capsule2.pointB - manifold.contactPoints[manifold.numPoints].normal * capsule2.radius;
-							manifold.contactPoints[manifold.numPoints].ID = 4;
-							++manifold.numPoints;
-						}
-					}
+					manifold.contactPoints[manifold.numPoints].normal = normalise(cB2 - cB1);
+					manifold.contactPoints[manifold.numPoints].position[0] = cB1 + manifold.contactPoints[manifold.numPoints].normal * capsule1.radius;
+					manifold.contactPoints[manifold.numPoints].position[1] = cB2 - manifold.contactPoints[manifold.numPoints].normal * capsule2.radius;
+					manifold.contactPoints[manifold.numPoints].ID = 1;
+					++manifold.numPoints;
 				}
 				else {
 
@@ -263,11 +177,16 @@ namespace mech {
 				}
 			}
 
+			bool capsuleLineFaceOverlap[2] = {false, false};
 			uint32 minFace = -1;
 			Vec3 faceNormal = nanVEC3;
 			Vec3 pointOnCapsule = nanVEC3;
 			decimal minFacePenetration = decimalMAX;
 			for (uint32 x = 0, len = convexHull.halfEdgeMesh.faces.size(); x < len; ++x) {
+
+				if (convexHull.getFacePolygon(x).intersects(capsule.capsuleLine)) {
+					capsuleLineFaceOverlap[x < 2 ? x : 1] = true;
+				}
 
 				Vec3 n = convexHull.getFaceNormal(x);
 				Vec3 c = capsule.getSupportPoint(-n);
@@ -286,126 +205,121 @@ namespace mech {
 				}
 			}
 
-			if (penetrationClosestAxis < minFacePenetration) {
+			manifold.flag = CollisionFlag::PENETRATING;
+			
+			if (almostEqual(dotProduct(faceNormal, capsule.capsuleLine.getDirection()), decimal(0.0))) {
 
-				manifold.contactPoints[manifold.numPoints].normal = closestAxisNormal;
-				manifold.contactPoints[manifold.numPoints].position[0] = point1;
-				manifold.contactPoints[manifold.numPoints].position[1] = point2;
-				manifold.contactPoints[manifold.numPoints].ID = -1;
-				++manifold.numPoints;
-			}
-			else {
+				Vec3 points[2] = { capsule.pointA, capsule.pointB };
+				bool inside[2] = { true, true };
+				StackArray<Vec3, 2> clipPoints(nanVEC3);
 
-				if (almostEqual(dotProduct(faceNormal, capsule.capsuleLine.getDirection()), decimal(0.0))) {
-
-					Vec3 points[2] = { capsule.pointA, capsule.pointB };
-					bool inside[2] = { true, true };
-					StackArray<Vec3, 2> clipPoints(nanVEC3);
-
-					uint16 edgeIndex = convexHull.halfEdgeMesh.faces[minFace].edgeIndex;
-					do {
-						Plane plane = convexHull.getFacePlane(convexHull.halfEdgeMesh.edges[convexHull.halfEdgeMesh.twinEdge(edgeIndex)].faceIndex);
-						for (byte x = 0; x < 2; ++x) {
-							if (plane.getDistanceFromPlane(points[x]) > decimal(0.0)) {
-								inside[x] = false;
-							}
-						}
-
-						Vec3 p = plane.clip(capsule.capsuleLine);
-						if (nanVec(p) == false) {
-							clipPoints.pushBack(p);
-						}
-
-						edgeIndex = convexHull.halfEdgeMesh.edges[edgeIndex].nextIndex;
-
-					} while (edgeIndex != convexHull.halfEdgeMesh.faces[minFace].edgeIndex);
-
+				uint16 edgeIndex = convexHull.halfEdgeMesh.faces[minFace].edgeIndex;
+				do {
+					Plane plane = convexHull.getFacePlane(convexHull.halfEdgeMesh.edges[convexHull.halfEdgeMesh.twinEdge(edgeIndex)].faceIndex);
 					for (byte x = 0; x < 2; ++x) {
-
-						if (inside[x] == true) {
-							
-							Vec3 point = points[x] + (-faceNormal * capsule.radius);
-							manifold.contactPoints[manifold.numPoints].normal = -faceNormal;
-							manifold.contactPoints[manifold.numPoints].position[0] = point;
-							manifold.contactPoints[manifold.numPoints].position[1] = convexHull.getFacePlane(minFace).closestPoint(point);
-							manifold.contactPoints[manifold.numPoints].ID = pairingFunction(minFace, 0);
-							++manifold.numPoints;
+						if (plane.getDistanceFromPlane(points[x]) > decimal(0.0)) {
+							inside[x] = false;
 						}
 					}
 
-					for (byte x = 0; x < 2; ++x) {
-						
-						if (manifold.numPoints == 2) break;
+					Vec3 p = plane.clip(capsule.capsuleLine);
+					if (nanVec(p) == false) {
+						clipPoints.pushBack(p);
+					}
 
-						Vec3 point = clipPoints[x] + (-faceNormal * capsule.radius);
+					edgeIndex = convexHull.halfEdgeMesh.edges[edgeIndex].nextIndex;
+
+				} while (edgeIndex != convexHull.halfEdgeMesh.faces[minFace].edgeIndex);
+
+				for (byte x = 0; x < 2; ++x) {
+
+					if (inside[x] == true) {
+
+						Vec3 point = points[x] + (-faceNormal * capsule.radius);
 						manifold.contactPoints[manifold.numPoints].normal = -faceNormal;
 						manifold.contactPoints[manifold.numPoints].position[0] = point;
 						manifold.contactPoints[manifold.numPoints].position[1] = convexHull.getFacePlane(minFace).closestPoint(point);
-						manifold.contactPoints[manifold.numPoints].ID = pairingFunction(minFace, 1);
+						manifold.contactPoints[manifold.numPoints].ID = pairingFunction(minFace, 0);
+						++manifold.numPoints;
+					}
+				}
+
+				for (byte x = 0; x < 2; ++x) {
+
+					if (manifold.numPoints == 2) break;
+
+					Vec3 point = clipPoints[x] + (-faceNormal * capsule.radius);
+					manifold.contactPoints[manifold.numPoints].normal = -faceNormal;
+					manifold.contactPoints[manifold.numPoints].position[0] = point;
+					manifold.contactPoints[manifold.numPoints].position[1] = convexHull.getFacePlane(minFace).closestPoint(point);
+					manifold.contactPoints[manifold.numPoints].ID = pairingFunction(minFace, 1);
+					++manifold.numPoints;
+				}
+			}
+			else {
+
+				if (capsuleLineFaceOverlap[0] == true) {
+
+					if (capsuleLineFaceOverlap[1] == true) {
+
+						Vec3 edgePoint;
+						Vec3 capsuleLinePoint;
+						{
+							decimal min = decimalMAX;
+							for (uint32 x = 0, len = convexHull.halfEdgeMesh.edges.size(); x < len; ++x) {
+
+								if (convexHull.halfEdgeMesh.edges[x].duplicate == true) continue;
+
+								Vec3 p2 = convexHull.getEdge(x).closestPoint(capsule.capsuleLine);
+								Vec3 p1 = capsule.capsuleLine.closestPoint(p2);
+
+								decimal d = magnitudeSq(p2 - p1);
+								if (d < min) {
+									min = d;
+									capsuleLinePoint = p1;
+									edgePoint = p2;
+								}
+							}
+						}
+
+						manifold.contactPoints[manifold.numPoints].normal = normalise(edgePoint - capsuleLinePoint);
+						manifold.contactPoints[manifold.numPoints].position[0] = capsuleLinePoint + manifold.contactPoints[manifold.numPoints].normal * capsule.radius;
+						manifold.contactPoints[manifold.numPoints].position[1] = edgePoint;
+						manifold.contactPoints[manifold.numPoints].ID = 2e10;
+						++manifold.numPoints;
+					}
+					else {
+
+						manifold.contactPoints[manifold.numPoints].normal = -faceNormal;
+						manifold.contactPoints[manifold.numPoints].position[0] = pointOnCapsule;
+						manifold.contactPoints[manifold.numPoints].position[1] = convexHull.getFacePlane(minFace).closestPoint(pointOnCapsule);
+						manifold.contactPoints[manifold.numPoints].ID = pairingFunction(minFace, 2);
 						++manifold.numPoints;
 					}
 				}
 				else {
 
-					manifold.contactPoints[manifold.numPoints].normal = -faceNormal;
-					manifold.contactPoints[manifold.numPoints].position[0] = pointOnCapsule;
-					manifold.contactPoints[manifold.numPoints].position[1] = convexHull.getFacePlane(minFace).closestPoint(pointOnCapsule);
-					manifold.contactPoints[manifold.numPoints].ID = pairingFunction(minFace, 2);
-					++manifold.numPoints;
-				}
-			}
+					if (penetrationClosestAxis < minFacePenetration) {
 
-			manifold.flag = CollisionFlag::PENETRATING;
-		}
-
-		void generateMeshContacts(const Capsule& capsule, const HybridArray<Triangle, 24, uint16>& triangles, ContactManifold& manifold)
-		{
-			Vec3 dir = capsule.capsuleLine.getDirection();
-			for (uint32 x = 0, len = triangles.size(); x < len; ++x) {
-
-				if (manifold.numPoints == MAXIMUM_CONTACT_POINTS) break;
-
-				if (capsule.intersects(triangles[x])) {
-
-					Plane plane = triangles[x].toPlane();
-
-					if (almostEqual(dotProduct(dir, plane.normal), decimal(0.0))) {
-
-						Vec3 closest[2] = { plane.closestPoint(capsule.pointA), plane.closestPoint(capsule.pointB) };
-						for (byte y = 0; y < 2; ++y) {
-
-							if (triangles[x].contains(closest[y])) {
-
-								manifold.flag = CollisionFlag::PENETRATING;
-
-								manifold.contactPoints[manifold.numPoints].normal = -plane.normal;
-								manifold.contactPoints[manifold.numPoints].position[0] = capsule.capsuleLine.closestPoint(closest[y]) + manifold.contactPoints[manifold.numPoints].normal * capsule.radius;
-								manifold.contactPoints[manifold.numPoints].position[1] = closest[y];
-								manifold.contactPoints[manifold.numPoints].ID = pairingFunction(y, x);
-								++manifold.numPoints;
-							}
-						}
+						manifold.contactPoints[manifold.numPoints].normal = closestAxisNormal;
+						manifold.contactPoints[manifold.numPoints].position[0] = point1;
+						manifold.contactPoints[manifold.numPoints].position[1] = point2;
+						manifold.contactPoints[manifold.numPoints].ID = 1e10;
+						++manifold.numPoints;
 					}
 					else {
 
-						Vec3 closest = plane.closestPoint(capsule.capsuleLine);
-
-						if (triangles[x].contains(closest)) {
-
-							manifold.flag = CollisionFlag::PENETRATING;
-
-							manifold.contactPoints[manifold.numPoints].normal = -plane.normal;
-							manifold.contactPoints[manifold.numPoints].position[0] = capsule.capsuleLine.closestPoint(closest) + manifold.contactPoints[manifold.numPoints].normal * capsule.radius;
-							manifold.contactPoints[manifold.numPoints].position[1] = closest;
-							manifold.contactPoints[manifold.numPoints].ID = pairingFunction(2, x);
-							++manifold.numPoints;
-						}
+						manifold.contactPoints[manifold.numPoints].normal = -faceNormal;
+						manifold.contactPoints[manifold.numPoints].position[0] = pointOnCapsule;
+						manifold.contactPoints[manifold.numPoints].position[1] = convexHull.getFacePlane(minFace).closestPoint(pointOnCapsule);
+						manifold.contactPoints[manifold.numPoints].ID = pairingFunction(minFace, 3);
+						++manifold.numPoints;
 					}
 				}
 			}
 		}
 
-		void generateTerrainContacts(const Capsule& capsule, const HybridArray<Triangle, 24, uint16>& triangles, ContactManifold& manifold)
+		void generateContacts(const Capsule& capsule, const HybridArray<Triangle, 24, uint16>& triangles, ContactManifold& manifold)
 		{
 			Vec3 dir = capsule.capsuleLine.getDirection();
 			for (uint32 x = 0, len = triangles.size(); x < len; ++x) {
@@ -472,8 +386,9 @@ namespace mech {
 				const ConvexHull& convexHull1;
 				const ConvexHull& convexHull2;
 				ContactManifold& manifold;
+				PhysicsData* physicsData = nullptr;
 
-				HullVsHull(const ConvexHull& c1, const ConvexHull& c2, ContactManifold& m) : convexHull1(c1), convexHull2(c2), manifold(m) {}
+				HullVsHull(const ConvexHull& c1, const ConvexHull& c2, ContactManifold& m, PhysicsData* p) : convexHull1(c1), convexHull2(c2), manifold(m), physicsData(p) {}
 
 				ReferenceFace getReferenceFace()
 				{
@@ -541,17 +456,19 @@ namespace mech {
 					return cba * dba < decimal(0.0) && adc* bdc < decimal(0.0) && cba* bdc > decimal(0.0);
 				}
 
-				MinimumEdges getMinimumEdges(const Vec3& center1)
+				MinimumEdges getMinimumEdges()
 				{
 					MinimumEdges best;
+					
+					Vec3 center1 = physicsData->convexHullColliders[this->manifold.colliderID1.colliderIndex].com;
 
 					for (uint32 x = 0, len = this->convexHull1.halfEdgeMesh.edges.size(); x < len; ++x) {
 
-						if (this->convexHull1.halfEdgeMesh.edges[x].duplicate) continue;
+						if (this->convexHull1.halfEdgeMesh.edges[x].duplicate == true) continue;
 
 						for (uint32 y = 0, len = this->convexHull2.halfEdgeMesh.edges.size(); y < len; ++y) {
 
-							if (this->convexHull2.halfEdgeMesh.edges[y].duplicate) continue;
+							if (this->convexHull2.halfEdgeMesh.edges[y].duplicate == true) continue;
 
 							LineSegment e1 = this->convexHull1.getEdge(x);
 							LineSegment e2 = this->convexHull2.getEdge(y);
@@ -668,8 +585,8 @@ namespace mech {
 						}
 					}
 
-					if (this->manifold.numPoints > MAXIMUM_CONTACT_POINTS) {
-						this->manifold.enforce4Contacts();
+					if (manifold.numPoints > MAXIMUM_CONTACT_POINTS) {
+						manifold.enforce4Contacts(this->physicsData->convexHullColliders[manifold.colliderID1.colliderIndex].bound.getCenter());
 					}
 				}
 
@@ -700,7 +617,7 @@ namespace mech {
 					}
 				}
 
-				void contactsFromScratch(PhysicsData* physicsData, HullVsHullContactCache& cache)
+				void contactsFromScratch(HullVsHullContactCache& cache)
 				{
 					/*
 						--------------cache flags----------------
@@ -712,60 +629,56 @@ namespace mech {
 					cache.cacheFlags = 0;
 					cache.cacheFlags |= 0b00000001;
 
-					GJKResult gjk = GJKAlgorithm(this->convexHull1, this->convexHull2, true, cache.gjkAxis);
+					ReferenceFace reference = this->getReferenceFace();
 
-					if (gjk.overlap == true) {
+					if (reference.separatingAxisFound == false) {
 
-						ReferenceFace reference = this->getReferenceFace();
+						MinimumEdges minEdges = this->getMinimumEdges();
 
-						if (reference.separatingAxisFound == false) {
+						if (minEdges.separatingAxisFound == false) {
 
-							MinimumEdges minEdges = this->getMinimumEdges(physicsData->convexHullColliders[this->manifold.colliderID1.colliderIndex].bound.getCenter());
+							if (reference.minFacePenetration <= (minEdges.minEdgePenetration + mathEPSILON)) {
 
-							if (minEdges.separatingAxisFound == false) {
+								const ConvexHull& refConvexHull = reference.ref == 1 ? this->convexHull1 : this->convexHull2;
+								const ConvexHull& incidentConvexHull = reference.ref == 1 ? this->convexHull2 : this->convexHull1;
 
-								if (reference.minFacePenetration <= (minEdges.minEdgePenetration + mathEPSILON)) {
+								Vec3 normal = refConvexHull.getFaceNormal(reference.refFace);
+								uint16 incidentFace = this->getIncidentFace(incidentConvexHull, normal);
+								this->generateFaceContacts(refConvexHull, incidentConvexHull, reference.refFace, normal, incidentFace);
 
-									const ConvexHull& refConvexHull = reference.ref == 1 ? this->convexHull1 : this->convexHull2;
-									const ConvexHull& incidentConvexHull = reference.ref == 1 ? this->convexHull2 : this->convexHull1;
+								cache.cacheFlags |= 0b00000100;
+								cache.refFace = reference.refFace;
+								cache.incidentFace = incidentFace;
 
-									Vec3 normal = refConvexHull.getFaceNormal(reference.refFace);
-									uint16 incidentFace = this->getIncidentFace(incidentConvexHull, normal);
-									this->generateFaceContacts(refConvexHull, incidentConvexHull, reference.refFace, normal, incidentFace);
-
-									cache.cacheFlags |= 0b00000100;
-									cache.refFace = reference.refFace;
-									cache.incidentFace = incidentFace;
-
-									if (reference.ref == 1) {
-										cache.cacheFlags |= 0b00001000;
-									}
-									else {
-										this->manifold.revert();
-									}
+								if (reference.ref == 1) {
+									cache.cacheFlags |= 0b00001000;
 								}
 								else {
-									this->generateEdgeContact(minEdges.edgeNormal, minEdges.edge1, minEdges.edge2);
+									this->manifold.revert();
 								}
+							}
+							else {
+								this->generateEdgeContact(minEdges.edgeNormal, minEdges.edge1, minEdges.edge2);
+							}
 
+							if (this->manifold.numPoints > 0) {
 								this->manifold.flag = CollisionFlag::PENETRATING;
 							}
 						}
-
-						cache.gjkAxis = gjk.separatingAxis;
-						cache.ID1 = this->manifold.colliderID1.ID;
 					}
+
+					cache.ID1 = this->manifold.colliderID1.ID;
 				}
 			};
 
-			HullVsHull hullVsHull(convexHull1, convexHull2, manifold);
+			HullVsHull hullVsHull(convexHull1, convexHull2, manifold, this->physicsData);
 
 			HullVsHullContactCache& cache = this->physicsData->hullVsHullContactCache.insert(manifold.ID)->second;
 
-			Vec3 c1 = this->physicsData->convexHullColliders[manifold.colliderID1.colliderIndex].bound.getCenter();
-			Vec3 c2 = this->physicsData->convexHullColliders[manifold.colliderID2.colliderIndex].bound.getCenter();
+			Vec3 c1 = this->physicsData->convexHullColliders[manifold.colliderID1.colliderIndex].com;
+			Vec3 c2 = this->physicsData->convexHullColliders[manifold.colliderID2.colliderIndex].com;
 
-			cache.cacheFlags |= (mathABS(magnitudeSq(c1 - c2) - magnitudeSq(cache.center1 - cache.center2)) < this->physicsData->minimalDispacement) ? 0b00000010 : 0;
+			cache.cacheFlags |= (mathABS(magnitudeSq(c1 - c2) - magnitudeSq(cache.center1 - cache.center2)) < this->physicsData->configurations.minimalDispacement) ? 0b00000010 : 0;
 
 			if ((cache.cacheFlags & 0b00000001) && (cache.cacheFlags & 0b00000010) && (cache.cacheFlags & 0b00000100)) {
 				hullVsHull.contactsFromCache(cache);
@@ -773,10 +686,10 @@ namespace mech {
 			else {
 				cache.center1 = c1;
 				cache.center2 = c2;
-				hullVsHull.contactsFromScratch(this->physicsData, cache);
+				hullVsHull.contactsFromScratch(cache);
 			}
 
-			cache.retention = this->physicsData->framesToRetainCache;
+			cache.retention = this->physicsData->configurations.framesToRetainCache;
 		}
 
 		void generateContacts(const ConvexHull& convexHull, const Sphere& sphere, ContactManifold& manifold)
@@ -791,70 +704,36 @@ namespace mech {
 			manifold.revert();
 		}
 
-		void generateMeshContacts(const ConvexHull& convexHull, const HybridArray<Triangle, 24, uint16>& triangles, ContactManifold& manifold)
+		void generateContacts(const ConvexHull& convexHull, const HybridArray<Triangle, 24, uint16>& triangles, ContactManifold& manifold)
 		{
 			HybridArray<uint16, 8, uint16> registered;
+			
 			for (uint32 x = 0, len1 = triangles.size(); x < len1; ++x) {
 
-				Plane plane = triangles[x].toPlane();
+				if (convexHull.intersects(triangles[x])) {
 
-				for (uint32 y = 0, len2 = convexHull.vertices.size(); y < len2; ++y) {
+					Plane plane = triangles[x].toPlane();
 
-					if (registered.find(y) == false) {
+					for (uint32 y = 0, len2 = convexHull.vertices.size(); y < len2; ++y) {
+						
+						if (registered.find(y) == false) {
 
-						if (plane.getDistanceFromPlane(convexHull.vertices[y]) < decimal(0.0)) {
+							if (plane.getDistanceFromPlane(convexHull.vertices[y]) < decimal(0.0)) {
 
-							Vec3 closest = plane.closestPoint(convexHull.vertices[y]);
+								Vec3 closest = plane.closestPoint(convexHull.vertices[y]);
 
-							if (triangles[x].contains(closest)) {
-								registered.pushBack(y);
+								if (triangles[x].contains(closest)) {
 
-								manifold.flag = CollisionFlag::PENETRATING;
+									manifold.flag = CollisionFlag::PENETRATING;
 
-								manifold.contactPoints[manifold.numPoints].normal = -plane.normal;
-								manifold.contactPoints[manifold.numPoints].position[0] = convexHull.vertices[y];
-								manifold.contactPoints[manifold.numPoints].position[1] = closest;
-								manifold.contactPoints[manifold.numPoints].ID = y;
-								++manifold.numPoints;
-							}
-						}
-					}
-				}
-			}
+									manifold.contactPoints[manifold.numPoints].normal = -plane.normal;
+									manifold.contactPoints[manifold.numPoints].position[0] = convexHull.vertices[y];
+									manifold.contactPoints[manifold.numPoints].position[1] = closest;
+									manifold.contactPoints[manifold.numPoints].ID = y;
+									++manifold.numPoints;
 
-			if (manifold.numPoints == 0) {
-
-				for (uint32 x = 0, len1 = triangles.size(); x < len1; ++x) {
-
-					if (convexHull.intersects(triangles[x])) {
-
-						HybridArray<LineSegment, 12, uint16> edges = convexHull.getEdges();
-						for (uint32 y = 0, len = edges.size(); y < len; ++y) {
-
-							Vec3 point = triangles[x].clip(edges[y]);
-							if (nanVec(point) == false) {
-
-								manifold.flag = CollisionFlag::PENETRATING;
-
-								Vec3 trinaglePoint;
-								{
-									StackArray<LineSegment, 3> triangleEdges = triangles[x].getEdges();
-									decimal least = decimalMAX;
-									for (byte z = 0; z < 3; ++z) {
-										Vec3 c = triangleEdges[z].closestPoint(point);
-										decimal d = magnitudeSq(c - point);
-										if (d < least) {
-											least = d;
-											trinaglePoint = c;
-										}
-									}
+									registered.pushBack(y);
 								}
-
-								manifold.contactPoints[manifold.numPoints].position[0] = point;
-								manifold.contactPoints[manifold.numPoints].position[1] = trinaglePoint;
-								manifold.contactPoints[manifold.numPoints].normal = normalise(manifold.contactPoints[manifold.numPoints].position[1] - manifold.contactPoints[manifold.numPoints].position[0]);
-								manifold.contactPoints[manifold.numPoints].ID = y;
-								++manifold.numPoints;
 							}
 						}
 					}
@@ -862,46 +741,7 @@ namespace mech {
 			}
 
 			if (manifold.numPoints > MAXIMUM_CONTACT_POINTS) {
-				manifold.enforce4Contacts();
-			}
-		}
-
-		void generateTerrainContacts(const ConvexHull& convexHull, const HybridArray<Triangle, 24, uint16>& triangles, ContactManifold& manifold)
-		{
-			decimal midHeight = this->physicsData->convexHullColliders[manifold.colliderID1.colliderIndex].bound.getCenter().y;
-
-			HybridArray<uint16, 8, uint16> registered;
-			for (uint32 x = 0, len1 = triangles.size(); x < len1; ++x) {
-
-				Plane plane = triangles[x].toPlane();
-
-				for (uint32 y = 0, len2 = convexHull.vertices.size(); y < len2; ++y) {
-
-					if (convexHull.vertices[y].y < midHeight && registered.find(y) == false) {
-
-						if (plane.getDistanceFromPlane(convexHull.vertices[y]) < decimal(0.0)) {
-
-							Vec3 closest = plane.closestPoint(convexHull.vertices[y]);
-
-							if (triangles[x].contains(closest)) {
-								
-								registered.pushBack(y);
-
-								manifold.flag = CollisionFlag::PENETRATING;
-
-								manifold.contactPoints[manifold.numPoints].normal = -plane.normal;
-								manifold.contactPoints[manifold.numPoints].position[0] = convexHull.vertices[y];
-								manifold.contactPoints[manifold.numPoints].position[1] = closest;
-								manifold.contactPoints[manifold.numPoints].ID = y;
-								++manifold.numPoints;
-							}
-						}
-					}
-				}
-			}
-
-			if (manifold.numPoints > MAXIMUM_CONTACT_POINTS) {
-				manifold.enforce4Contacts();
+				manifold.enforce4Contacts(this->physicsData->convexHullColliders[manifold.colliderID1.colliderIndex].bound.getCenter());
 			}
 		}
 	};

@@ -75,8 +75,10 @@ namespace mech {
 		bool intersects(const Ray& ray) const;
 		bool intersects(const LineSegment& lineSegment) const;
 
-		void transform(const Mat4x4& mat);
-		Capsule transformed(const Mat4x4& mat) const;
+		void transform(const Transform3D& t);
+		Capsule transformed(const Transform3D& t) const;
+
+		String toString() const { return String("Capsule(radius:") + toString2(this->radius) + String(" pointA:") + this->pointA.toString() + String(" pointB:") + this->pointB.toString() + String(")"); }
 	};
 }
 

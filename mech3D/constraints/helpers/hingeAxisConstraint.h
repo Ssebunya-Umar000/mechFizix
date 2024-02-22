@@ -53,13 +53,13 @@ namespace mech {
 
 				Vec3 perp = a2 - (this->a1 * dot);
 				if (magnitudeSq(perp) < 1e-6) {
-					perp = getPerpendicularVector(this->a1);
+					perp = getPerpendicularVectorNormalised(this->a1);
 				}
 
 				a2 = normalise(perp * decimal(0.99) + this->a1 * decimal(0.01));
 			}
 
-			this->b2 = getPerpendicularVector(a2);
+			this->b2 = getPerpendicularVectorNormalised(a2);
 			this->c2 = crossProduct(a2, this->b2);
 
 			this->b2CrossA1 = crossProduct(this->b2, this->a1);
@@ -80,7 +80,8 @@ namespace mech {
 		{
 			Vec3 impulse = this->b2CrossA1 * this->totalLambda[0] + this->c2CrossA1 * this->totalLambda[1];
 			for (uint32 x = 0; x < 2; ++x) if (bodies[x]) {
-				bodies[x]->updateLinearAndAngularVelocity(Vec3(), bodies[x]->invInertiaTensor * impulse * (x == 0 ? -1 : 1));
+				decimal sign = x == 0 ? decimal(-1.0) : decimal(1.0);
+				bodies[x]->updateLinearAndAngularVelocity(Vec3(), bodies[x]->invInertiaTensor * impulse * sign);
 			}
 		}
 
@@ -99,7 +100,8 @@ namespace mech {
 
 			Vec3 impulse = this->b2CrossA1 * lambda[0] + this->c2CrossA1 * lambda[1];
 			for (uint32 x = 0; x < 2; ++x) if (bodies[x]) {
-				bodies[x]->updateLinearAndAngularVelocity(Vec3(), bodies[x]->invInertiaTensor * impulse * (x == 0 ? -1 : 1));
+				decimal sign = x == 0 ? decimal(-1.0) : decimal(1.0);
+				bodies[x]->updateLinearAndAngularVelocity(Vec3(), bodies[x]->invInertiaTensor * impulse * sign);
 			}
 		}
 
@@ -112,7 +114,8 @@ namespace mech {
 
 				Vec3 impulse = this->b2CrossA1 * lambda[0] + this->c2CrossA1 * lambda[1];
 				for (uint32 x = 0; x < 2; ++x) if (bodies[x]) {
-					bodies[x]->updatePositionAndOrientaion(Vec3(), bodies[x]->invInertiaTensor * impulse * (x == 0 ? -1 : 1));
+					decimal sign = x == 0 ? decimal(-1.0) : decimal(1.0);
+					bodies[x]->updatePositionAndOrientaion(Vec3(), bodies[x]->invInertiaTensor * impulse * sign);
 				}
 			}
 		}

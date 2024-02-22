@@ -41,6 +41,7 @@
 
 #include"algorithms/SAT.h"
 #include"algorithms/GJK.h"
+#include"../../math/transform.h"
 
 namespace mech {
 
@@ -365,18 +366,18 @@ namespace mech {
 		return tmin * tmin <= magnitudeSq(lineSegment.getDirection());
 	}
 
-	void AABB::transform(const Mat4x4& mat)
+	void AABB::transform(const Transform3D& t)
 	{
-		this->min = mat * this->min;
-		this->max = mat * this->max;
+		this->min = t * this->min;
+		this->max = t * this->max;
 	}
 
-	AABB AABB::transformed(const Mat4x4& mat) const
+	AABB AABB::transformed(const Transform3D& t) const
 	{
-		return AABB(mat * this->min, mat * this->max);
+		return AABB(t * this->min, t * this->max);
 	}
 
-	AABB AABB::partition8(const byte& partition)
+	AABB AABB::partitionTo8(const byte& partition)
 	{
 		Vec3 center = this->getCenter();
 		if (partition == 0) {

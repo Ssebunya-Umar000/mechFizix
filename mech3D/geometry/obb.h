@@ -44,6 +44,8 @@ namespace mech {
 	struct Ray;
 	struct LineSegment;
 
+	struct Transform3D;
+
 	//oriented bounding box
 	struct OBB {
 		Vec3 center;
@@ -90,8 +92,10 @@ namespace mech {
 		bool intersects(const Ray& ray) const;
 		bool intersects(const LineSegment& lineSegment) const;
 
-		void transform(const Mat4x4& mat);
-		OBB transformed(const Mat4x4& mat) const;
+		void transform(const Transform3D& t);
+		OBB transformed(const Transform3D& t) const;
+
+		String toString() const { return String("OBB(center:") + this->center.toString() + String(" halfExtents:") + this->halfExtents.toString() + String(" orientation:") + this->orientation.toString() + String(")"); }
 	};
 }
 

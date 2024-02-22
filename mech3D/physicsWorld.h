@@ -31,7 +31,6 @@
 #include"constraintSolver.h"
 #include"broadPhase.h"
 #include"cacheManager.h"
-#include"../core/material.h"
 
 namespace mech {
 
@@ -41,6 +40,7 @@ namespace mech {
 
 		PhysicsData mPhysicsData;
 		BroadPhase mBroadPhase;
+		NarrowPhase mNarrowPhase;
 		ConstraintSolver mConstraintSolver;
 		CacheManager mCacheManager;
 
@@ -66,16 +66,15 @@ namespace mech {
 		void add(const TriangleMesh& mesh, const PhysicsMaterial& material);
 
 		//constraints
-		void add(const HingeConstraint::Parameters& parameters);
-		void add(const ConeConstraint::Parameters& parameters);
-		void add(const MotorConstraint::Parameters& parameters);
+		void add(const HingeConstraint::Parameters& parameters) { this->mConstraintSolver.add(parameters); }
+		void add(const ConeConstraint::Parameters& parameters) { this->mConstraintSolver.add(parameters); }
+		void add(const MotorConstraint::Parameters& parameters) { this->mConstraintSolver.add(parameters); }
 
-		bool isObjectIntheWorld(const uint32& objectIndex);
-		void removePhysicsObject(const uint32& objectIndex);
-		Mat4x4 getObjectTransformationMatrix(const uint32& objectIndex);
+		bool isObjectIntheWorld(const uint32& objectIndex) { return this->mPhysicsData.physicsObjects.isIndexOccupied(objectIndex); }
+		void removePhysicsObject(const uint32& objectIndex) { this->mPhysicsData.physicsObjects.eraseDataAtIndex(objectIndex); }
 
-		void addForceToRigidBody(const uint32& objectIndex, const Vec3& force);
-		void addForceToRigidBodyAtaPoint(const uint32& objectIndex, const Vec3& force, const Vec3& point);
+		RigidBody* getRigidBody(const uint32& objectIndex) { return &this->mPhysicsData.physicsObjects[objectIndex].rigidBody; }
+		PhysicsConfigurations* getPhysicsConfigurations() { return &this->mPhysicsData.configurations; }
 	};
 }
 

@@ -40,6 +40,7 @@ namespace mech {
 		StackArray<uint32, 4> disabledCollisions; //StackArray<collider ID, ...
 		uint32 colliderID = -1;
 		uint32 objectIndex = -1;
+		uint32 islandIndex = -1;
 
 		PhysicsObject() {}
 
@@ -47,7 +48,6 @@ namespace mech {
 		void diableCollision(PhysicsData* physicsData, const uint32& otherIndex);
 		void addToIsland(PhysicsData* physicsData, const uint32& otherIndex);
 
-		bool isTerminated() { return this->nodesIntersected.empty(); }
 		ColliderIdentifier getIdentifier();
 	};
 }

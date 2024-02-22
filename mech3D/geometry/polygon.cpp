@@ -41,6 +41,7 @@
 
 #include"algorithms/SAT.h"
 #include"algorithms/GJK.h"
+#include"../../math/transform.h"
 
 namespace mech {
 
@@ -52,14 +53,7 @@ namespace mech {
 
 	decimal Polygon::calculateArea() const
 	{
-		Vec3 area;
-		int len = this->vertices.size();
-		int x = len - 1;
-		for (byte y = 0; y < len; ++y) {
-			area += crossProduct(this->vertices[x], this->vertices[y]);
-			x = y;
-		}
-		return decimal(0.5) * mathABS(dotProduct(this->getNormal(), area));
+		return mathABS(dotProduct(this->getNormal(), crossProduct(this->vertices[1] - this->vertices[0], this->vertices.back() - this->vertices[0])));
 	}
 
 	HybridArray<Triangle, 2, byte> Polygon::triangulate() const
@@ -342,29 +336,20 @@ namespace mech {
 
 	bool Polygon::intersects(const LineSegment& lineSegment) const
 	{
-		Vec3 normal = crossProduct(this->vertices[0] - this->vertices[1], this->vertices.back() - this->vertices[0]);
-
-		if (SATOverlap(*this, lineSegment, normal) == false) return false;
-
-		HybridArray<LineSegment, 4, byte> edges = this->getEdges();
-		for (byte x = 0, len = edges.size(); x < len; ++x) {
-			if (SATOverlap(*this, lineSegment, crossProduct(normal, edges[x].getDirection())) == false) return false;
-		}
-
-		return true;
+		return GJKAlgorithm(*this, lineSegment, true).overlap;
 	}
 
-	void Polygon::transform(const Mat4x4& mat)
+	void Polygon::transform(const Transform3D& t)
 	{
 		for (uint32 i = 0, len = this->vertices.size(); i < len; ++i) {
-			this->vertices[i] = mat * this->vertices[i];
+			this->vertices[i] = t * this->vertices[i];
 		}
 	}
 
-	Polygon Polygon::transformed(const Mat4x4& mat) const
+	Polygon Polygon::transformed(const Transform3D& t) const
 	{
 		Polygon p = *this;
-		p.transform(mat);
+		p.transform(t);
 		return p;
 	}
 

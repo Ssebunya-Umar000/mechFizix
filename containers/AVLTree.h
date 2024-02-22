@@ -263,7 +263,7 @@ namespace mech {
 			}
 		}
 
-		void eraseDataAtIndex(const sizeType& index)
+		void eraseDataAtIndex(const sizeType index)
 		{
 			this->eraseData(this->mData[index].data);
 		}
@@ -300,7 +300,7 @@ namespace mech {
 
 		sizeType size() const
 		{
-			return this->mData.actualCount();
+			return this->mData.actualSize();
 		}
 
 		bool empty() const
@@ -331,36 +331,37 @@ namespace mech {
 
 			void moveToNext()
 			{
-				sizeType size = this->mTree->mData.internalCount();
-				while (this->mIndex < size) {
+				sizeType size = this->mTree->mData.internalSize();
+				while (this->mCurrentIndex < size) {
 
-					if (this->mTree->mData.isIndexOccupied(this->mIndex)) {
-						this->mCurrent = &this->mTree->mData[this->mIndex];
+					if (this->mTree->mData.isIndexOccupied(this->mCurrentIndex)) {
 						return;
 					}
 
-					++this->mIndex;
+					++this->mCurrentIndex;
 				}
 
-				this->mCurrent = nullptr;
+				this->mCurrentIndex = -1;
 			}
 
-			Node* mCurrent = nullptr;
-			const AVLTree<T, sizeType>* mTree = nullptr;
-			sizeType mIndex = 0;
+			const AVLTree<T, sizeType>* mTree;
+			sizeType mCurrentIndex = -1;
 
 		public:
 
-			Iterator() {}
+			Iterator(const AVLTree<T, sizeType>* tree) : mTree(tree) {}
 
-			Iterator(const AVLTree<T, sizeType>* tree) : mTree(tree)
+			Iterator(const AVLTree<T, sizeType>* tree, const sizeType& index) : mTree(tree)
 			{
-				this->moveToNext();
+				if (this->mTree->empty() == false) {
+					this->mCurrentIndex = index;
+					this->moveToNext();
+				}
 			}
 
 			Iterator& operator++()
 			{
-				++this->mIndex;
+				++this->mCurrentIndex;
 				this->moveToNext();
 
 				return *this;
@@ -375,43 +376,43 @@ namespace mech {
 
 			T& data()
 			{
-				return this->mCurrent->data;
+				return this->mTree->mData[this->mCurrentIndex].data;
 			}
 
 			T& operator*()
 			{
-				return this->mCurrent->data;
+				return this->mTree->mData[this->mCurrentIndex].data;
 			}
 
 			sizeType index()
 			{
-				return this->mIndex;
+				return this->mCurrentIndex;
 			}
 
 			bool operator==(const Iterator& other)
 			{
-				return this->mCurrent == other.mCurrent;
+				return this->mCurrentIndex == other.mCurrentIndex && this->mTree == other.mTree;
 			}
 
 			bool operator!=(const Iterator& other)
 			{
-				return this->mCurrent != other.mCurrent;
+				return this->mCurrentIndex != other.mCurrentIndex || this->mTree != other.mTree;
 			}
 
 			bool isVoid() const
 			{
-				return this->mCurrent == nullptr;
+				return this->mCurrentIndex == (sizeType)(-1);
 			}
 		};
 
 		Iterator begin() const
 		{
-			return Iterator(this);
+			return Iterator(this, 0);
 		}
 
 		Iterator end() const
 		{
-			return Iterator();
+			return Iterator(this);
 		}
 	};
 }

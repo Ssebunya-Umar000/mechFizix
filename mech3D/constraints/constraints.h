@@ -39,10 +39,20 @@ namespace mech {
 
 #define MAXIMUM_CONTACT_POINTS 4
 
-	struct PhysicsData;
+	class PhysicsData;
 
 	/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 	enum class ConstraintType : byte { contact = 1 << 0, cone = 1 << 1, hinge = 1 << 2, motor = 1 << 3 };
+
+	/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+	struct ConstraintConfigurations {
+
+		decimal baumgarteFactor = decimal(0.3);
+		byte velocityIterations = 5;
+		byte positionIterations = 3;
+		decimal linearSlop = decimal(0.01);
+		decimal minVelocityForRestitution = decimal(1.5);
+	};
 
 	/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 	/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -73,16 +83,16 @@ namespace mech {
 		};
 
 		ContactData contactData[MAXIMUM_CONTACT_POINTS] = {};
-		StackArray<RigidBody*, 2> bodies;
 		decimal frictionCoefficient = decimal(0.0);
+		StackArray<uint32, 2> objectIndex = StackArray<uint32, 2>(-1);
 		uint32 impulseCacheID = -1;
 		byte contactPointCount = 0;
 
 		ContactConstraint() {}
-		ContactConstraint(PhysicsData* physicsData, const ContactManifold& manifold);
+		ContactConstraint(PhysicsData* physicsData, const ContactManifold& manifold, const decimal& minVelocityForRestitution);
 
 		void warmStart(PhysicsData* physicsData);
-		void solve(PhysicsData* physicsData, const decimal& baumgarteFactor, const bool& solvePosition, const bool& lastIteration);
+		void solve(PhysicsData* physicsData, const decimal& baumgarteFactor, const decimal& linearSlop, const bool& solvePosition, const bool& lastIteration);
 	};
 
 	/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -92,12 +102,12 @@ namespace mech {
 
 		//parameters should be in world space
 		struct Parameters {
-			uint32 object1 = -1; //index of physics object 1
-			uint32 object2 = -1; //index of physics object 2
 			Vec3 twistAxis1 = nanVEC3;
 			Vec3 twistAxis2 = nanVEC3;
 			Vec3 anchorPoint = nanVEC3;
 			decimal halfConeAngle = decimalNAN;
+			uint32 object1 = -1; //index of physics object 1
+			uint32 object2 = -1; //index of physics object 2
 			bool disableCollisions = true;
 		};
 
@@ -108,13 +118,13 @@ namespace mech {
 		Vec3 worldSpaceRotationAxis;
 		decimal cosHalfConeAngle = decimal(0.0);
 		decimal cosTheta = decimal(0.0);
-		uint32 objectIndex1 = -1;
-		uint32 objectIndex2 = -1;
+		StackArray<uint32, 2> objectIndex = StackArray<uint32, 2>(-1);
 		bool isActive = true;
 
 		ConeConstraint() {}
 		ConeConstraint(PhysicsData* physicsData, const Parameters& parameters);
 
+		bool isValid(PhysicsData* physicsData);
 		void warmStart(PhysicsData* physicsData);
 		void solve(PhysicsData* physicsData, const decimal& baumgarteFactor, const bool& solvePosition);
 	};
@@ -126,8 +136,6 @@ namespace mech {
 
 		//parameters should be in world space
 		struct Parameters {
-			uint32 object1 = -1; //index of physics object 1
-			uint32 object2 = -1; //index of physics object 2
 			Vec3 hingeAxis1 = nanVEC3;
 			Vec3 hingeAxis2 = nanVEC3;
 			Vec3 normalAxis1 = nanVEC3;
@@ -135,6 +143,8 @@ namespace mech {
 			Vec3 anchorPoint = nanVEC3;
 			decimal limitsMin = decimalNAN;
 			decimal limitsMax = decimalNAN;
+			uint32 object1 = -1; //index of physics object 1
+			uint32 object2 = -1; //index of physics object 2
 			bool disableCollisions = true;
 		};
 
@@ -148,13 +158,13 @@ namespace mech {
 		decimal theta = decimal(0.0);
 		decimal limitsMin = decimal(0.0);
 		decimal limitsMax = decimal(0.0);
-		uint32 objectIndex1 = -1;
-		uint32 objectIndex2 = -1;
+		StackArray<uint32, 2> objectIndex = StackArray<uint32, 2>(-1);
 		bool isActive = true;
 
 		HingeConstraint() {}
 		HingeConstraint(PhysicsData* physicsData, const Parameters& parameters);
 
+		bool isValid(PhysicsData* physicsData);
 		void warmStart(PhysicsData* physicsData);
 		void solve(PhysicsData* physicsData, const decimal& baumgarteFactor, const bool& solvePosition);
 	};
@@ -166,8 +176,6 @@ namespace mech {
 
 		//parameters should be in world space
 		struct Parameters {
-			uint32 object1 = -1; //index of physics object 1
-			uint32 object2 = -1; //index of physics object 2
 			Vec3 hingeAxis1 = nanVEC3;
 			Vec3 hingeAxis2 = nanVEC3;
 			Vec3 normalAxis1 = nanVEC3;
@@ -176,6 +184,8 @@ namespace mech {
 			decimal targetAngularVelocity = decimalNAN;
 			decimal minTorque = decimalNAN;
 			decimal maxTorque = decimalNAN;
+			uint32 object1 = -1; //index of physics object 1
+			uint32 object2 = -1; //index of physics object 2
 			bool disableCollisions = true;
 		};
 
@@ -189,13 +199,13 @@ namespace mech {
 		decimal targetAngularVelocity = decimal(0.0);
 		decimal minTorque = decimal(0.0);
 		decimal maxTorque = decimal(0.0);
-		uint32 objectIndex1 = -1;
-		uint32 objectIndex2 = -1;
+		StackArray<uint32, 2> objectIndex = StackArray<uint32, 2>(-1);
 		bool isActive = true;
 
 		MotorConstraint() {}
 		MotorConstraint(PhysicsData* physicsData, const Parameters& parameters);
 
+		bool isValid(PhysicsData* physicsData);
 		void warmStart(PhysicsData* physicsData);
 		void solve(PhysicsData* physicsData, const decimal& deltaTime, const decimal& baumgarteFactor, const bool& solvePosition);
 	};

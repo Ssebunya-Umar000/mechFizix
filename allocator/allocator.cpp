@@ -26,6 +26,7 @@
 //@ssebunya_umar - X(twitter)
 
 #include"allocator.h"
+#include"../core/utilities.h"
 
 #include<cstdlib>
 #include<cstring>

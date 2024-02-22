@@ -31,482 +31,580 @@
 #include"narrowPhase.h"
 #include"collision/timeOfImpact.h"
 #include"../containers/sortedArray.h"
+#include"geometry/ray.h"
 
 namespace mech {
 
 	struct BroadPhase {
 
-		NarrowPhase narrowPhase;
+		PhysicsData* physicsData = nullptr;
+		NarrowPhase* narrowPhase = nullptr;
+		ConstraintSolver* constraintSolver = nullptr;
 
-		BroadPhase() {}
+		void (BroadPhase::* discreteCollisionFunctionPointers[20]) (ContactManifold&) = {};
+		TOIResult (BroadPhase::* toiFuctionPointers[20]) (const AABB&, const ColliderIdentifier&, const ColliderIdentifier&, const Transform3DRange&, const Transform3DRange&) = {};
+
+		BroadPhase()
+		{
+			this->discreteCollisionFunctionPointers[0]  = &BroadPhase::convexHullVsConvexHullDiscrete;
+			this->discreteCollisionFunctionPointers[4]  = &BroadPhase::convexHullVsSphereDiscrete;
+			this->discreteCollisionFunctionPointers[8]  = &BroadPhase::convexHullVsCapsuleDiscrete;
+			this->discreteCollisionFunctionPointers[12] = &BroadPhase::convexHullVsTriangleMeshDiscrete;
+			this->discreteCollisionFunctionPointers[16] = &BroadPhase::convexHullVsHeightFieldDiscrete;
+			this->discreteCollisionFunctionPointers[1]  = &BroadPhase::sphereVsConvexHullDiscrete;
+			this->discreteCollisionFunctionPointers[5]  = &BroadPhase::sphereVsSphereDiscrete;
+			this->discreteCollisionFunctionPointers[9]  = &BroadPhase::sphereVsCapsuleDiscrete;
+			this->discreteCollisionFunctionPointers[13] = &BroadPhase::sphereVsTriangleMeshDiscrete;
+			this->discreteCollisionFunctionPointers[17] = &BroadPhase::sphereVsHeightFieldDiscrete;
+			this->discreteCollisionFunctionPointers[2]  = &BroadPhase::capsuleVsConvexHullDiscrete;
+			this->discreteCollisionFunctionPointers[6]  = &BroadPhase::capsuleVsSphereDiscrete;
+			this->discreteCollisionFunctionPointers[10] = &BroadPhase::capsuleVsCapsuleDiscrete;
+			this->discreteCollisionFunctionPointers[14] = &BroadPhase::capsuleVsTriangleMeshDiscrete;
+			this->discreteCollisionFunctionPointers[18] = &BroadPhase::capsuleVsHeightFieldDiscrete;
+
+			this->toiFuctionPointers[0] = &BroadPhase::convexHullVsConvexHullTOI;
+			this->toiFuctionPointers[4] = &BroadPhase::convexHullVsSphereTOI;
+			this->toiFuctionPointers[8] = &BroadPhase::convexHullVsCapsuleTOI;
+			this->toiFuctionPointers[12] = &BroadPhase::convexHullVsTriangleMeshTOI;
+			this->toiFuctionPointers[16] = &BroadPhase::convexHullVsHeightFieldTOI;
+			this->toiFuctionPointers[1] = &BroadPhase::sphereVsConvexHullTOI;
+			this->toiFuctionPointers[5] = &BroadPhase::sphereVsSphereTOI;
+			this->toiFuctionPointers[9] = &BroadPhase::sphereVsCapsuleTOI;
+			this->toiFuctionPointers[13] = &BroadPhase::sphereVsTriangleMeshTOI;
+			this->toiFuctionPointers[17] = &BroadPhase::sphereVsHeightFieldTOI;
+			this->toiFuctionPointers[2] = &BroadPhase::capsuleVsConvexHullTOI;
+			this->toiFuctionPointers[6] = &BroadPhase::capsuleVsSphereTOI;
+			this->toiFuctionPointers[10] = &BroadPhase::capsuleVsCapsuleTOI;
+			this->toiFuctionPointers[14] = &BroadPhase::capsuleVsTriangleMeshTOI;
+			this->toiFuctionPointers[18] = &BroadPhase::capsuleVsHeightFieldTOI;
+		}
+
 		BroadPhase(const BroadPhase&) = delete;
 		BroadPhase& operator=(const BroadPhase&) = delete;
 
-		void discreteCollisionDetection()
+		void detectCollision(ContactManifold& manifold)
 		{
-			struct DCD {
+			uint32 functionIndex = (uint32)(manifold.colliderID1.type) + ((uint32)(manifold.colliderID2.type) * 4);
+			(this->*discreteCollisionFunctionPointers[functionIndex])(manifold);
 
-				NarrowPhase& narrowPhase;
+			if (manifold.flag == CollisionFlag::PENETRATING) {
+				this->constraintSolver->add(manifold);
+			}
 
-				DCD(NarrowPhase& n) : narrowPhase(n) {}
+			this->physicsData->finishedCollisions.insert(Pair<uint32, CollisionFlag>(manifold.ID, manifold.flag));
+		}
 
-				void updateIslands()
-				{
-					PhysicsData* physicsData = this->narrowPhase.physicsData;
+		void discreteCollisionDetection(PhysicsObject& phyObject)
+		{
+			ColliderIdentifier colliderID1 = phyObject.getIdentifier();
 
-					for (auto it1 = physicsData->islands.begin(), end1 = physicsData->islands.end(); it1 != end1;) {
+			//update collider status in the octree
+			this->physicsData->octree.repositionCollider(physicsData, colliderID1);
 
-						auto temp1 = it1;
-						++it1;
+			//update collider status in its island if their is one
+			if (isAValidIndex(phyObject.islandIndex)) {
 
-						AVLTree<Pair<uint32, CollisionFlag>, uint32> finished;
+				bool removeFromIsland = true;
+				for (auto it = this->physicsData->islands[phyObject.islandIndex].begin(), end = this->physicsData->islands[phyObject.islandIndex].end(); it != end; ++it) {
+					 
+					if (it.data().first == phyObject.colliderID) continue;
 
-						for (auto it2 = temp1.data().begin(), end2 = temp1.data().end(); it2 != end2;) {
+					if (phyObject.disabledCollisions.find(it.data().first)) {
+						removeFromIsland = false;
+						continue;
+					}
 
-							auto temp2 = it2;
-							++it2;
+					uint32 manifoldID = pairingFunction(phyObject.colliderID, it.data().first);
+					Pair<uint32, CollisionFlag>* ptr = this->physicsData->finishedCollisions.find(manifoldID);
+					if (ptr == nullptr) {
 
-							PhysicsObject& phyObject = physicsData->physicsObjects[temp2.data().second.objectIndex];
+						ContactManifold manifold = ContactManifold(manifoldID, colliderID1, it.data().second);
+						this->detectCollision(manifold);
 
-							if (phyObject.rigidBody.isActive() == false) continue;
-
-							auto it3 = temp2;
-							++it3;
-
-							bool removeFromIsland = true;
-							if (it3 == end2) {
-								removeFromIsland = false;
-							}
-
-							while (it3 != end2) {
-
-								auto temp3 = it3;
-								++it3;
-
-								if (phyObject.disabledCollisions.find(temp3.data().first)) {
-									removeFromIsland = false;
-								}
-								else {
-
-									uint32 id = pairingFunction(phyObject.colliderID, temp3.data().second.ID);
-									Pair<uint32, CollisionFlag>* ptr = finished.find(id);
-									if (ptr == nullptr) {
-
-										CollisionFlag flag = this->dispatch(id, phyObject.getIdentifier(), temp3.data().second);
-										if (flag != CollisionFlag::NOTCOLLIDING) {
-											removeFromIsland = false;
-										}
-
-										finished.insert(Pair<uint32, CollisionFlag>(id, flag));
-									}
-									else {
-										if (ptr->second != CollisionFlag::NOTCOLLIDING) {
-											removeFromIsland = false;
-										}
-									}
-								}
-							}
-
-							if (removeFromIsland == true) {
-
-								if (temp1.data().size() == 2) {
-
-									for (auto it3 = temp1.data().begin(), end3 = temp1.data().end(); it3 != end3; ++it3) {
-										physicsData->physicsObjects[it3.data().second.objectIndex].rigidBody.islandIndex = -1;
-										physicsData->physicsObjects[it3.data().second.objectIndex].rigidBody.motion = physicsData->maxMotion;
-									}
-
-									physicsData->islands.eraseDataAtIndex(temp1.index());
-
-									break;
-								}
-								else {
-									temp1.data().eraseData(phyObject.colliderID);
-
-									phyObject.rigidBody.islandIndex = -1;
-									phyObject.rigidBody.motion = physicsData->maxMotion;
-								}
-							}
+						if (manifold.flag != CollisionFlag::NOTCOLLIDING) {
+							removeFromIsland = false;
+						}
+					}
+					else {
+						if (ptr->second != CollisionFlag::NOTCOLLIDING) {
+							removeFromIsland = false;
 						}
 					}
 				}
 
-				void generateCollisionPairs()
-				{
-					PhysicsData* physicsData = this->narrowPhase.physicsData;
+				if (removeFromIsland == true) {
 
-					for (auto it1 = physicsData->activeOctreeNodes.begin(), end1 = physicsData->activeOctreeNodes.end(); it1 != end1;) {
+					if (this->physicsData->islands[phyObject.islandIndex].size() == 2) {
 
-						auto temp1 = it1;
-						++it1;
-
-						if (temp1.isValid() == false) continue;
-
-						bool firstIteration = true;
-						Octree::Node & node = physicsData->octree.nodes[temp1.data()];
-						for (auto it2 = node.dynamicColliders.begin(), end2 = node.dynamicColliders.end(); it2 != end2;) {
-
-							auto temp2 = it2;
-							++it2;
-
-							PhysicsObject& phyObject = physicsData->physicsObjects[temp2.data().second.objectIndex];
-
-							if (phyObject.rigidBody.isActive() == false) continue;
-
-							if (firstIteration == true) {
-								if (node.intersects(physicsData, phyObject.getIdentifier()) == false) {
-									phyObject.nodesIntersected.eraseData(temp1.data());
-									node.dynamicColliders.eraseData(phyObject.colliderID);
-									continue;
-								}
-							}
-
-							for (auto it3 = node.staticColliders.begin(), end3 = node.staticColliders.end(); it3 != end3; ++it3) {
-								uint32 id = pairingFunction(phyObject.colliderID, it3.data().second.ID);
-								if (physicsData->manifoldIDs.find(id)) continue;
-								this->dispatch(id, phyObject.getIdentifier(), it3.data().second);
-							}
-
-							auto it3 = temp2;
-							++it3;
-							while (it3 != end2) {
-
-								auto temp3 = it3;
-								++it3;
-
-								if (firstIteration == true) {
-									if (node.intersects(physicsData, temp3.data().second) == false) {
-										physicsData->physicsObjects[temp3.data().second.objectIndex].nodesIntersected.eraseData(temp1.data());
-										node.dynamicColliders.eraseData(temp3.data().second.ID);
-										if (temp3 == it2) {
-											++it2;
-										}
-										continue;
-									}
-								}
-
-								if (phyObject.disabledCollisions.find(temp3.data().first)) continue;
-
-								uint32 id = pairingFunction(phyObject.colliderID, temp3.data().second.ID);
-
-								if (physicsData->manifoldIDs.find(id)) continue;
-
-								if (this->dispatch(id, phyObject.getIdentifier(), temp3.data().second) != CollisionFlag::NOTCOLLIDING) {
-									phyObject.addToIsland(physicsData, temp3.data().second.objectIndex);
-								}
-							}
-
-							firstIteration = false;
-
-							if (phyObject.nodesIntersected.empty()) {
-								//deal with objects attached to this in constraints
-								if (isAValidIndex(phyObject.rigidBody.islandIndex)) {
-									physicsData->islands[phyObject.rigidBody.islandIndex].eraseData(phyObject.colliderID);
-								}
-							}
+						uint32 index = phyObject.islandIndex;
+						for (auto it = this->physicsData->islands[index].begin(), end = this->physicsData->islands[index].end(); it != end; ++it) {
+							this->physicsData->physicsObjects[it.data().second.objectIndex].islandIndex = -1;
+							this->physicsData->physicsObjects[it.data().second.objectIndex].rigidBody.setMotionToMax();
 						}
 
-						if (node.dynamicColliders.empty() && (node.staticColliders.empty() || (node.staticColliders.size() == 1 && node.staticColliders.find(physicsData->heightFieldCollider.identifier.ID)))) {
-							physicsData->octree.terminate(temp1.data());
-							physicsData->activeOctreeNodes.eraseData(temp1.data());
+						this->physicsData->islands.eraseDataAtIndex(index);
+					}
+					else {
+						this->physicsData->islands[phyObject.islandIndex].eraseData(phyObject.colliderID);
+
+						phyObject.islandIndex = -1;
+						phyObject.rigidBody.setMotionToMax();
+					}
+				}
+			}
+
+			//look for collisions
+			for (byte x = 0, len = phyObject.nodesIntersected.size(); x < len; ++x) {
+
+				Octree::Node& node = this->physicsData->octree.nodes[phyObject.nodesIntersected[x]];
+
+				if (node.evaluate(physicsData, colliderID1)) {
+
+					for (auto it = node.staticColliders.begin(), end = node.staticColliders.end(); it != end; ++it) {
+						
+						uint32 manifoldID = pairingFunction(phyObject.colliderID, it.data().first);
+						if (this->physicsData->finishedCollisions.find(manifoldID) == false) {
+							ContactManifold manifold = ContactManifold(manifoldID, colliderID1, it.data().second);
+							this->detectCollision(manifold);
+						}
+					}
+
+					for (auto it = node.dynamicColliders.begin(), end = node.dynamicColliders.end(); it != end; ++it) {
+
+						if (phyObject.disabledCollisions.find(it.data().first)) continue;
+
+						uint32 manifoldID = pairingFunction(phyObject.colliderID, it.data().first);
+						if (this->physicsData->finishedCollisions.find(manifoldID) == false) {
+
+							ContactManifold manifold = ContactManifold(manifoldID, colliderID1, it.data().second);
+							this->detectCollision(manifold);
+
+							if (manifold.flag != CollisionFlag::NOTCOLLIDING) {
+								phyObject.addToIsland(physicsData, it.data().second.objectIndex);
+							}
 						}
 					}
 				}
+				else {
+					node.dynamicColliders.eraseData(colliderID1.ID);
 
-				CollisionFlag dispatch(const uint32& manifoldId, const ColliderIdentifier& colliderID1, const ColliderIdentifier& colliderID2)
-				{
-					PhysicsData* physicsData = this->narrowPhase.physicsData;
-
-					physicsData->manifoldIDs.insert(manifoldId);
-
-					ContactManifold manifold = ContactManifold(manifoldId, colliderID1, colliderID2);
-
-					if (colliderID1.type == ColliderType::sphere) {
-
-						manifold.properties1 = physicsData->sphereColliders[colliderID1.colliderIndex].properties;
-
-						if (colliderID2.type == ColliderType::sphere) {
-							if (physicsData->sphereColliders[colliderID1.colliderIndex].bound.intersects(physicsData->sphereColliders[colliderID2.colliderIndex].bound)) {
-								manifold.flag = CollisionFlag::PROXIMAL;
-								manifold.properties2 = physicsData->sphereColliders[colliderID2.colliderIndex].properties;
-								this->narrowPhase.generateContacts(physicsData->sphereColliders[colliderID1.colliderIndex].collider, physicsData->sphereColliders[colliderID2.colliderIndex].collider, manifold);
-							}
-						}
-						else if (colliderID2.type == ColliderType::capsule) {
-							if (physicsData->sphereColliders[colliderID1.colliderIndex].bound.intersects(physicsData->capsuleColliders[colliderID2.colliderIndex].bound)) {
-								manifold.flag = CollisionFlag::PROXIMAL;
-								manifold.properties2 = physicsData->capsuleColliders[colliderID2.colliderIndex].properties;
-								this->narrowPhase.generateContacts(physicsData->sphereColliders[colliderID1.colliderIndex].collider, physicsData->capsuleColliders[colliderID2.colliderIndex].collider, manifold);
-							}
-						}
-						else if (colliderID2.type == ColliderType::convexHull) {
-							if (physicsData->sphereColliders[colliderID1.colliderIndex].bound.intersects(physicsData->convexHullColliders[colliderID2.colliderIndex].bound)) {
-								manifold.flag = CollisionFlag::PROXIMAL;
-								manifold.properties2 = physicsData->convexHullColliders[colliderID2.colliderIndex].properties;
-								this->narrowPhase.generateContacts(physicsData->sphereColliders[colliderID1.colliderIndex].collider, physicsData->convexHullColliders[colliderID2.colliderIndex].collider, manifold);
-							}
-						}
-						else if (colliderID2.type == ColliderType::triangleMesh) {
-							HybridArray<Triangle, 24, uint16> triangles;
-							if (physicsData->triangleMeshColliders[colliderID2.colliderIndex].collider.intersects(physicsData->sphereColliders[colliderID1.colliderIndex].bound, triangles)) {
-								manifold.properties2 = physicsData->triangleMeshColliders[colliderID2.colliderIndex].properties;
-								this->narrowPhase.generateMeshContacts(physicsData->sphereColliders[colliderID1.colliderIndex].collider, triangles, manifold);
-							}
-						}
-						else if (colliderID2.type == ColliderType::heightField) {
-							HybridArray<Triangle, 24, uint16> triangles;
-							if (physicsData->heightFieldCollider.collider.intersects(physicsData->sphereColliders[colliderID1.colliderIndex].bound, triangles)) {
-								manifold.properties2 = physicsData->heightFieldCollider.properties;
-								this->narrowPhase.generateTerrainContacts(physicsData->sphereColliders[colliderID1.colliderIndex].collider, triangles, manifold);
-							}
-						}
-					}
-					else if (colliderID1.type == ColliderType::capsule) {
-
-						manifold.properties1 = physicsData->capsuleColliders[colliderID1.colliderIndex].properties;
-
-						if (colliderID2.type == ColliderType::sphere) {
-							if (physicsData->capsuleColliders[colliderID1.colliderIndex].bound.intersects(physicsData->sphereColliders[colliderID2.colliderIndex].bound)) {
-								manifold.flag = CollisionFlag::PROXIMAL;
-								manifold.properties2 = physicsData->sphereColliders[colliderID2.colliderIndex].properties;
-								this->narrowPhase.generateContacts(physicsData->capsuleColliders[colliderID1.colliderIndex].collider, physicsData->sphereColliders[colliderID2.colliderIndex].collider, manifold);
-							}
-						}
-						else if (colliderID2.type == ColliderType::capsule) {
-							if (physicsData->capsuleColliders[colliderID1.colliderIndex].bound.intersects(physicsData->capsuleColliders[colliderID2.colliderIndex].bound)) {
-								manifold.flag = CollisionFlag::PROXIMAL;
-								manifold.properties2 = physicsData->capsuleColliders[colliderID2.colliderIndex].properties;
-								this->narrowPhase.generateContacts(physicsData->capsuleColliders[colliderID1.colliderIndex].collider, physicsData->capsuleColliders[colliderID2.colliderIndex].collider, manifold);
-							}
-						}
-						else if (colliderID2.type == ColliderType::convexHull) {
-							if (physicsData->capsuleColliders[colliderID1.colliderIndex].bound.intersects(physicsData->convexHullColliders[colliderID2.colliderIndex].bound)) {
-								manifold.flag = CollisionFlag::PROXIMAL;
-								manifold.properties2 = physicsData->convexHullColliders[colliderID2.colliderIndex].properties;
-								this->narrowPhase.generateContacts(physicsData->capsuleColliders[colliderID1.colliderIndex].collider, physicsData->convexHullColliders[colliderID2.colliderIndex].collider, manifold);
-							}
-						}
-						else if (colliderID2.type == ColliderType::triangleMesh) {
-							HybridArray<Triangle, 24, uint16> triangles;
-							if (physicsData->triangleMeshColliders[colliderID2.colliderIndex].collider.intersects(physicsData->capsuleColliders[colliderID1.colliderIndex].bound, triangles)) {
-								manifold.properties2 = physicsData->triangleMeshColliders[colliderID2.colliderIndex].properties;
-								this->narrowPhase.generateMeshContacts(physicsData->capsuleColliders[colliderID1.colliderIndex].collider, triangles, manifold);
-							}
-						}
-						else if (colliderID2.type == ColliderType::heightField) {
-							HybridArray<Triangle, 24, uint16> triangles;
-							if (physicsData->heightFieldCollider.collider.intersects(physicsData->capsuleColliders[colliderID1.colliderIndex].bound, triangles)) {
-								manifold.properties2 = physicsData->heightFieldCollider.properties;
-								this->narrowPhase.generateTerrainContacts(physicsData->capsuleColliders[colliderID1.colliderIndex].collider, triangles, manifold);
-							}
-						}
-					}
-					else if (colliderID1.type == ColliderType::convexHull) {
-
-						manifold.properties1 = physicsData->convexHullColliders[colliderID1.colliderIndex].properties;
-
-						if (colliderID2.type == ColliderType::sphere) {
-							if (physicsData->convexHullColliders[colliderID1.colliderIndex].bound.intersects(physicsData->sphereColliders[colliderID2.colliderIndex].bound)) {
-								manifold.flag = CollisionFlag::PROXIMAL;
-								manifold.properties2 = physicsData->sphereColliders[colliderID2.colliderIndex].properties;
-								this->narrowPhase.generateContacts(physicsData->convexHullColliders[colliderID1.colliderIndex].collider, physicsData->sphereColliders[colliderID2.colliderIndex].collider, manifold);
-							}
-						}
-						else if (colliderID2.type == ColliderType::capsule) {
-							if (physicsData->convexHullColliders[colliderID1.colliderIndex].bound.intersects(physicsData->capsuleColliders[colliderID2.colliderIndex].bound)) {
-								manifold.flag = CollisionFlag::PROXIMAL;
-								manifold.properties2 = physicsData->capsuleColliders[colliderID2.colliderIndex].properties;
-								this->narrowPhase.generateContacts(physicsData->convexHullColliders[colliderID1.colliderIndex].collider, physicsData->capsuleColliders[colliderID2.colliderIndex].collider, manifold);
-							}
-						}
-						else if (colliderID2.type == ColliderType::convexHull) {
-							if (physicsData->convexHullColliders[colliderID1.colliderIndex].bound.intersects(physicsData->convexHullColliders[colliderID2.colliderIndex].bound)) {
-								manifold.flag = CollisionFlag::PROXIMAL;
-								manifold.properties2 = physicsData->convexHullColliders[colliderID2.colliderIndex].properties;
-								this->narrowPhase.generateContacts(physicsData->convexHullColliders[colliderID1.colliderIndex].collider, physicsData->convexHullColliders[colliderID2.colliderIndex].collider, manifold);
-							}
-						}
-						else if (colliderID2.type == ColliderType::triangleMesh) {
-							HybridArray<Triangle, 24, uint16> triangles;
-							if (physicsData->triangleMeshColliders[colliderID2.colliderIndex].collider.intersects(physicsData->convexHullColliders[colliderID1.colliderIndex].bound, triangles)) {
-								manifold.properties2 = physicsData->triangleMeshColliders[colliderID2.colliderIndex].properties;
-								this->narrowPhase.generateMeshContacts(physicsData->convexHullColliders[colliderID1.colliderIndex].collider, triangles, manifold);
-							}
-						}
-						else if (colliderID2.type == ColliderType::heightField) {
-							HybridArray<Triangle, 24, uint16> triangles;
-							if (physicsData->heightFieldCollider.collider.intersects(physicsData->convexHullColliders[colliderID1.colliderIndex].bound, triangles)) {
-								manifold.properties2 = physicsData->heightFieldCollider.properties;
-								this->narrowPhase.generateTerrainContacts(physicsData->convexHullColliders[colliderID1.colliderIndex].collider, triangles, manifold);
-							}
-						}
+					if (node.dynamicColliders.empty() && (node.staticColliders.empty() || (node.staticColliders.size() == 1 && node.staticColliders.find(this->physicsData->heightFieldCollider.identifier.ID)))) {
+						this->physicsData->octree.terminate(phyObject.nodesIntersected[x]);
 					}
 
-					if (manifold.flag == CollisionFlag::PENETRATING) {
-						assert(manifold.numPoints > 0 && manifold.numPoints <= 4);
-						physicsData->contactConstraints.pushBack(ContactConstraint(physicsData, manifold));
-					}
-
-					return manifold.flag;
+					phyObject.nodesIntersected.eraseDataAtIndex(x);
+					--x;
+					--len;
 				}
-			};
+			}
 
-			DCD dcd(this->narrowPhase);
+			if (phyObject.nodesIntersected.empty()) {
 
-			dcd.updateIslands();
-			dcd.generateCollisionPairs();
+				if (isAValidIndex(phyObject.islandIndex)) {
+					this->physicsData->islands[phyObject.islandIndex].eraseData(phyObject.colliderID);
+				}
 
-			this->narrowPhase.physicsData->manifoldIDs.shallowClear();
+				this->physicsData->physicsObjects.eraseDataAtIndex(phyObject.objectIndex);
+			}
 		}
 
 		void continousCollisionDetection(PhysicsObject& phyObject)
 		{
 			struct CCD {
 
-				AABB overallAABB;
-				SortedArray<Pair<decimal, uint16>, uint16> nodeIndicies;
-				SortedArray<decimal, uint16> hitTimeFractions;
-
-				CCD(const AABB& a) : overallAABB(a) {}
-
-				void registerIntersectingNodes(PhysicsData* physicsData, const uint32& nodeIndex, const Vec3& position1Center)
+				void registerIntersectingNodes(const uint32& nodeIndex, PhysicsData* physicsData, const AABB& aabbCast, HybridArray<uint16, 8, uint16>& nodes)
 				{
-					if (physicsData->octree.nodes[nodeIndex].bound.intersects(this->overallAABB)) {
+					for (byte x = 0; x < 8; ++x) {
 
-						if (physicsData->octree.nodes[nodeIndex].children.empty()) {
-							this->nodeIndicies.insert(Pair<decimal, uint16>(magnitudeSq(position1Center - physicsData->octree.nodes[nodeIndex].bound.getCenter()), nodeIndex));
-						}
-						else {
-							for (byte x = 0, len = physicsData->octree.nodes[nodeIndex].children.size(); x < len; ++x) {
-								registerIntersectingNodes(physicsData, physicsData->octree.nodes[nodeIndex].children[x].second, position1Center);
-							}
-						}
-					}
-				}
+						if (isAValidIndex(physicsData->octree.nodes[nodeIndex].children[x].first)) {
 
-				bool dispatch(PhysicsData* physicsData, const const AABB& aaabbAtOrigin, const ColliderIdentifier& colliderID2, const Transform3DPair& tA, const Transform3DPair& tB)
-				{
-					TOIResult toiResult;
-					bool hitFound = false;
+							uint32 childIndex = physicsData->octree.nodes[nodeIndex].children[x].second;
 
-					if (colliderID2.type != ColliderType::triangleMesh && colliderID2.type != ColliderType::heightField) {
+							if (physicsData->octree.nodes[childIndex].bound.intersects(aabbCast)) {
 
-						Mat4x4 mat(decimal(1.0));
-						if (isAValidIndex(colliderID2.objectIndex)) {
-							mat = getInverse(physicsData->physicsObjects[colliderID2.objectIndex].rigidBody.transform.toMatrix());
-						}
+								if (physicsData->octree.nodes[childIndex].children.empty()) {
+									nodes.pushBack(childIndex);
+								}
+								else {
+									registerIntersectingNodes(childIndex, physicsData, aabbCast, nodes);
+								}
 
-						if (colliderID2.type == ColliderType::sphere) {
-							toiResult = timeOfImpact(aaabbAtOrigin, physicsData->sphereColliders[colliderID2.colliderIndex].bound.transformed(mat), tA, tB);
-						}
-						else if (colliderID2.type == ColliderType::capsule) {
-							toiResult = timeOfImpact(aaabbAtOrigin, physicsData->capsuleColliders[colliderID2.colliderIndex].bound.transformed(mat), tA, tB);
-
-						}
-						else if (colliderID2.type == ColliderType::convexHull) {
-							toiResult = timeOfImpact(aaabbAtOrigin, physicsData->convexHullColliders[colliderID2.colliderIndex].bound.transformed(mat), tA, tB);
-						}
-
-						if (toiResult.state == TOIState::overlaping || toiResult.state == TOIState::touching) {
-							hitFound = true;
-							this->hitTimeFractions.insert(toiResult.t);
-						}
-					}
-					else {
-
-						HybridArray<Triangle, 24, uint16> triangles;
-						bool intersectionFound = false;
-						
-						if (colliderID2.type == ColliderType::triangleMesh) {
-							if (physicsData->triangleMeshColliders[colliderID2.colliderIndex].collider.intersects(this->overallAABB, triangles)) {
-								intersectionFound = true;
-							}
-						}
-						else if (colliderID2.type == ColliderType::heightField) {
-							if (physicsData->heightFieldCollider.collider.intersects(this->overallAABB, triangles)) {
-								intersectionFound = true;
-							}
-						}
-
-						if (intersectionFound == true) {
-							for (byte x = 0, len = triangles.size(); x < len; ++x) {
-								
-								toiResult = timeOfImpact(aaabbAtOrigin, triangles[x], tA, tB);
-								if (toiResult.state == TOIState::overlaping || toiResult.state == TOIState::touching) {
-									hitFound = true;
-									this->hitTimeFractions.insert(toiResult.t);
+								if (physicsData->octree.nodes[childIndex].bound.contains(aabbCast)) {
+									break;
 								}
 							}
 						}
 					}
-
-					return hitFound;
 				}
 			};
 
-			PhysicsData* physicsData = this->narrowPhase.physicsData;
-
-			for (byte x = 0, len = phyObject.nodesIntersected.size(); x < len; ++x) {
-				physicsData->octree.nodes[phyObject.nodesIntersected[x]].dynamicColliders.eraseData(phyObject.colliderID);
-			}
-			phyObject.nodesIntersected.clear();
-
 			ColliderIdentifier colliderID1 = phyObject.getIdentifier();
-			AABB currentAABB;
-			if (colliderID1.type == ColliderType::convexHull) {
-				currentAABB = physicsData->convexHullColliders[colliderID1.colliderIndex].bound;
-			}
-			if (colliderID1.type == ColliderType::sphere) {
-				currentAABB = physicsData->sphereColliders[colliderID1.colliderIndex].bound;
-			}
-			if (colliderID1.type == ColliderType::capsule) {
-				currentAABB = physicsData->capsuleColliders[colliderID1.colliderIndex].bound;
-			}
-
-			AABB prevAABB = currentAABB.transformed(getInverse(phyObject.rigidBody.transform.toMatrix()) * phyObject.rigidBody.prevTransform3D.toMatrix());
-
-			CCD ccd(AABB(minVec(prevAABB.min, currentAABB.min), maxVec(prevAABB.max, currentAABB.max)));
 			
-			Vec3 position1Center = prevAABB.getCenter();
-			for (byte x = 0, len = physicsData->octree.nodes[physicsData->octree.parentNode].children.size(); x < len; ++x) {
-				ccd.registerIntersectingNodes(physicsData, physicsData->octree.nodes[physicsData->octree.parentNode].children[x].second, position1Center);
-			}
+			const AABB& currentAABB = this->physicsData->getColliderAABB(colliderID1);
+			AABB prevAABB = currentAABB.transformed(getInverse(phyObject.rigidBody.transform) * phyObject.rigidBody.prevTransform);
+			AABB aabbCast = AABB(minVec(prevAABB.min, currentAABB.min), maxVec(prevAABB.max, currentAABB.max));
 
-			AABB aabbAtOrigin = currentAABB.transformed(getInverse(phyObject.rigidBody.transform.toMatrix()));
-			Transform3DPair tA;
-			tA.transform1 = phyObject.rigidBody.prevTransform3D;
-			tA.transform2 = phyObject.rigidBody.transform;
-			for (auto it1 = ccd.nodeIndicies.begin(), end1 = ccd.nodeIndicies.end(); it1 != end1; ++it1) {
+			SortedArray<decimal, uint16> hitTimes;
+			HybridArray<uint16, 8, uint16> intersectingNodes;
 
-				bool hitFound = false;
-				
-				for (auto it2 = physicsData->octree.nodes[it1.data().second].staticColliders.begin(), end2 = physicsData->octree.nodes[it1.data().second].staticColliders.end(); it2 != end2; ++it2) {
-					if (ccd.dispatch(physicsData, aabbAtOrigin, it2.data().second, tA, Transform3DPair()) == true) {
-						hitFound = true;
+			CCD ccd;
+			ccd.registerIntersectingNodes(this->physicsData->octree.parentNode, physicsData, aabbCast, intersectingNodes);
+
+			Transform3DRange tA = Transform3DRange(phyObject.rigidBody.prevTransform, phyObject.rigidBody.transform);
+
+			for (auto it1 = intersectingNodes.begin(), end1 = intersectingNodes.end(); it1 != end1; ++it1) {
+
+				for (auto it2 = physicsData->octree.nodes[it1.data()].staticColliders.begin(), end2 = physicsData->octree.nodes[it1.data()].staticColliders.end(); it2 != end2; ++it2) {
+
+					uint32 functionIndex = (uint32)(colliderID1.type) + ((uint32)(it2.data().second.type) * 4);
+					TOIResult r = (this->*toiFuctionPointers[functionIndex])(aabbCast, colliderID1, it2.data().second, tA, Transform3DRange());
+			
+					if (r.state != TOIState::separated) {
+						hitTimes.insert(r.t);
 					}
 				}
 
-				if (hitFound == true) break;
+				for (auto it2 = physicsData->octree.nodes[it1.data()].dynamicColliders.begin(), end2 = physicsData->octree.nodes[it1.data()].dynamicColliders.end(); it2 != end2; ++it2) {
 
-				for (auto it2 = physicsData->octree.nodes[it1.data().second].dynamicColliders.begin(), end2 = physicsData->octree.nodes[it1.data().second].dynamicColliders.end(); it2 != end2; ++it2) {
+					if (phyObject.disabledCollisions.find(it2.data().first)) continue;
+
+					Transform3DRange tB = Transform3DRange(physicsData->physicsObjects[it2.data().second.objectIndex].rigidBody.prevTransform, physicsData->physicsObjects[it2.data().second.objectIndex].rigidBody.transform);
 					
-					Transform3DPair tB;
-					tB.transform1 = physicsData->physicsObjects[it2.data().second.objectIndex].rigidBody.prevTransform3D;
-					tB.transform2 = physicsData->physicsObjects[it2.data().second.objectIndex].rigidBody.transform;
+					uint32 functionIndex = (uint32)(colliderID1.type) + ((uint32)(it2.data().second.type) * 4);
+					TOIResult r = (this->*toiFuctionPointers[functionIndex])(aabbCast, colliderID1, it2.data().second, tA, tB);
 
-					if (ccd.dispatch(physicsData, aabbAtOrigin, it2.data().second, tA, tB) == true) {
-						hitFound = true;
+					if (r.state != TOIState::separated) {
+						hitTimes.insert(r.t);
 					}
 				}
-
-				if (hitFound == true) break;
 			}
 
-			if (ccd.hitTimeFractions.empty() == false) {
-				phyObject.rigidBody.subStep(physicsData, ccd.hitTimeFractions.minimum());
+			if (hitTimes.empty() == false) {
+				
+				phyObject.rigidBody.subStep(physicsData, hitTimes.minimum() + this->physicsData->configurations.timeOfImpactBias);
+				
+				for (byte x = 0, len = phyObject.nodesIntersected.size(); x < len; ++x) {
+					this->physicsData->octree.nodes[phyObject.nodesIntersected[x]].dynamicColliders.eraseData(phyObject.colliderID);
+				}
+				phyObject.nodesIntersected.clear();
+
+				this->physicsData->octree.add(physicsData, colliderID1);
 			}
 
-			physicsData->octree.add(physicsData, colliderID1);
+			this->discreteCollisionDetection(phyObject);
+		}
+
+		void convexHullVsConvexHullDiscrete(ContactManifold& manifold)
+		{
+			manifold.material1 = this->physicsData->convexHullColliders[manifold.colliderID1.colliderIndex].material;
+			if (this->physicsData->convexHullColliders[manifold.colliderID1.colliderIndex].bound.intersects(this->physicsData->convexHullColliders[manifold.colliderID2.colliderIndex].bound)) {
+				manifold.flag = CollisionFlag::PROXIMAL;
+				manifold.material2 = this->physicsData->convexHullColliders[manifold.colliderID2.colliderIndex].material;
+				this->narrowPhase->generateContacts(this->physicsData->convexHullColliders[manifold.colliderID1.colliderIndex].collider, this->physicsData->convexHullColliders[manifold.colliderID2.colliderIndex].collider, manifold);
+			}
+		}
+
+		void convexHullVsSphereDiscrete(ContactManifold& manifold)
+		{
+			manifold.material1 = this->physicsData->convexHullColliders[manifold.colliderID1.colliderIndex].material;
+			if (this->physicsData->convexHullColliders[manifold.colliderID1.colliderIndex].bound.intersects(this->physicsData->sphereColliders[manifold.colliderID2.colliderIndex].bound)) {
+				manifold.flag = CollisionFlag::PROXIMAL;
+				manifold.material2 = this->physicsData->sphereColliders[manifold.colliderID2.colliderIndex].material;
+				this->narrowPhase->generateContacts(this->physicsData->convexHullColliders[manifold.colliderID1.colliderIndex].collider, this->physicsData->sphereColliders[manifold.colliderID2.colliderIndex].collider, manifold);
+			}
+		}
+
+		void convexHullVsCapsuleDiscrete(ContactManifold& manifold)
+		{
+			manifold.material1 = this->physicsData->convexHullColliders[manifold.colliderID1.colliderIndex].material;
+			if (this->physicsData->convexHullColliders[manifold.colliderID1.colliderIndex].bound.intersects(this->physicsData->capsuleColliders[manifold.colliderID2.colliderIndex].bound)) {
+				manifold.flag = CollisionFlag::PROXIMAL;
+				manifold.material2 = this->physicsData->capsuleColliders[manifold.colliderID2.colliderIndex].material;
+				this->narrowPhase->generateContacts(this->physicsData->convexHullColliders[manifold.colliderID1.colliderIndex].collider, this->physicsData->capsuleColliders[manifold.colliderID2.colliderIndex].collider, manifold);
+			}
+		}
+
+		void convexHullVsTriangleMeshDiscrete(ContactManifold& manifold)
+		{
+			manifold.material1 = this->physicsData->convexHullColliders[manifold.colliderID1.colliderIndex].material;
+			HybridArray<Triangle, 24, uint16> triangles;
+			if (this->physicsData->triangleMeshColliders[manifold.colliderID2.colliderIndex].collider.intersects(this->physicsData->convexHullColliders[manifold.colliderID1.colliderIndex].bound, triangles)) {
+				manifold.material2 = this->physicsData->triangleMeshColliders[manifold.colliderID2.colliderIndex].material;
+				this->narrowPhase->generateContacts(this->physicsData->convexHullColliders[manifold.colliderID1.colliderIndex].collider, triangles, manifold);
+			}
+		}
+
+		void convexHullVsHeightFieldDiscrete(ContactManifold& manifold)
+		{
+			manifold.material1 = this->physicsData->convexHullColliders[manifold.colliderID1.colliderIndex].material;
+			HybridArray<Triangle, 24, uint16> triangles;
+			if (this->physicsData->heightFieldCollider.collider.intersects(this->physicsData->convexHullColliders[manifold.colliderID1.colliderIndex].bound, triangles)) {
+				manifold.material2 = this->physicsData->heightFieldCollider.material;
+				this->narrowPhase->generateContacts(this->physicsData->convexHullColliders[manifold.colliderID1.colliderIndex].collider, triangles, manifold);
+			}
+		}
+
+		void sphereVsConvexHullDiscrete(ContactManifold& manifold)
+		{
+			manifold.material1 = this->physicsData->sphereColliders[manifold.colliderID1.colliderIndex].material;
+			if (this->physicsData->sphereColliders[manifold.colliderID1.colliderIndex].bound.intersects(this->physicsData->convexHullColliders[manifold.colliderID2.colliderIndex].bound)) {
+				manifold.flag = CollisionFlag::PROXIMAL;
+				manifold.material2 = this->physicsData->convexHullColliders[manifold.colliderID2.colliderIndex].material;
+				this->narrowPhase->generateContacts(this->physicsData->sphereColliders[manifold.colliderID1.colliderIndex].collider, this->physicsData->convexHullColliders[manifold.colliderID2.colliderIndex].collider, manifold);
+			}
+		}
+
+		void sphereVsSphereDiscrete(ContactManifold& manifold)
+		{
+			manifold.material1 = this->physicsData->sphereColliders[manifold.colliderID1.colliderIndex].material;
+			if (this->physicsData->sphereColliders[manifold.colliderID1.colliderIndex].bound.intersects(this->physicsData->sphereColliders[manifold.colliderID2.colliderIndex].bound)) {
+				manifold.flag = CollisionFlag::PROXIMAL;
+				manifold.material2 = this->physicsData->sphereColliders[manifold.colliderID2.colliderIndex].material;
+				this->narrowPhase->generateContacts(this->physicsData->sphereColliders[manifold.colliderID1.colliderIndex].collider, this->physicsData->sphereColliders[manifold.colliderID2.colliderIndex].collider, manifold);
+			}
+		}
+
+		void sphereVsCapsuleDiscrete(ContactManifold& manifold)
+		{
+			manifold.material1 = this->physicsData->sphereColliders[manifold.colliderID1.colliderIndex].material;
+			if (this->physicsData->sphereColliders[manifold.colliderID1.colliderIndex].bound.intersects(this->physicsData->capsuleColliders[manifold.colliderID2.colliderIndex].bound)) {
+				manifold.flag = CollisionFlag::PROXIMAL;
+				manifold.material2 = this->physicsData->capsuleColliders[manifold.colliderID2.colliderIndex].material;
+				this->narrowPhase->generateContacts(this->physicsData->sphereColliders[manifold.colliderID1.colliderIndex].collider, this->physicsData->capsuleColliders[manifold.colliderID2.colliderIndex].collider, manifold);
+			}
+		}
+
+		void sphereVsTriangleMeshDiscrete(ContactManifold& manifold)
+		{
+			manifold.material1 = this->physicsData->sphereColliders[manifold.colliderID1.colliderIndex].material;
+			HybridArray<Triangle, 24, uint16> triangles;
+			if (this->physicsData->triangleMeshColliders[manifold.colliderID2.colliderIndex].collider.intersects(this->physicsData->sphereColliders[manifold.colliderID1.colliderIndex].bound, triangles)) {
+				manifold.material2 = this->physicsData->triangleMeshColliders[manifold.colliderID2.colliderIndex].material;
+				this->narrowPhase->generateContacts(this->physicsData->sphereColliders[manifold.colliderID1.colliderIndex].collider, triangles, manifold);
+			}
+		}
+
+		void sphereVsHeightFieldDiscrete(ContactManifold& manifold)
+		{
+			manifold.material1 = this->physicsData->sphereColliders[manifold.colliderID1.colliderIndex].material;
+			HybridArray<Triangle, 24, uint16> triangles;
+			if (this->physicsData->heightFieldCollider.collider.intersects(this->physicsData->sphereColliders[manifold.colliderID1.colliderIndex].bound, triangles)) {
+				manifold.material2 = this->physicsData->heightFieldCollider.material;
+				this->narrowPhase->generateContacts(this->physicsData->sphereColliders[manifold.colliderID1.colliderIndex].collider, triangles, manifold);
+			}
+		}
+
+		void capsuleVsConvexHullDiscrete(ContactManifold& manifold)
+		{
+			manifold.material1 = this->physicsData->capsuleColliders[manifold.colliderID1.colliderIndex].material;
+			if (this->physicsData->capsuleColliders[manifold.colliderID1.colliderIndex].bound.intersects(this->physicsData->convexHullColliders[manifold.colliderID2.colliderIndex].bound)) {
+				manifold.flag = CollisionFlag::PROXIMAL;
+				manifold.material2 = this->physicsData->convexHullColliders[manifold.colliderID2.colliderIndex].material;
+				this->narrowPhase->generateContacts(this->physicsData->capsuleColliders[manifold.colliderID1.colliderIndex].collider, this->physicsData->convexHullColliders[manifold.colliderID2.colliderIndex].collider, manifold);
+			}
+		}
+
+		void capsuleVsSphereDiscrete(ContactManifold& manifold)
+		{
+			manifold.material1 = this->physicsData->capsuleColliders[manifold.colliderID1.colliderIndex].material;
+			if (this->physicsData->capsuleColliders[manifold.colliderID1.colliderIndex].bound.intersects(this->physicsData->sphereColliders[manifold.colliderID2.colliderIndex].bound)) {
+				manifold.flag = CollisionFlag::PROXIMAL;
+				manifold.material2 = this->physicsData->sphereColliders[manifold.colliderID2.colliderIndex].material;
+				this->narrowPhase->generateContacts(this->physicsData->capsuleColliders[manifold.colliderID1.colliderIndex].collider, this->physicsData->sphereColliders[manifold.colliderID2.colliderIndex].collider, manifold);
+			}
+		}
+
+		void capsuleVsCapsuleDiscrete(ContactManifold& manifold)
+		{
+			manifold.material1 = this->physicsData->capsuleColliders[manifold.colliderID1.colliderIndex].material;
+			if (this->physicsData->capsuleColliders[manifold.colliderID1.colliderIndex].bound.intersects(this->physicsData->capsuleColliders[manifold.colliderID2.colliderIndex].bound)) {
+				manifold.flag = CollisionFlag::PROXIMAL;
+				manifold.material2 = this->physicsData->capsuleColliders[manifold.colliderID2.colliderIndex].material;
+				this->narrowPhase->generateContacts(this->physicsData->capsuleColliders[manifold.colliderID1.colliderIndex].collider, this->physicsData->capsuleColliders[manifold.colliderID2.colliderIndex].collider, manifold);
+			}
+		}
+
+		void capsuleVsTriangleMeshDiscrete(ContactManifold& manifold)
+		{
+			manifold.material1 = this->physicsData->capsuleColliders[manifold.colliderID1.colliderIndex].material;
+			HybridArray<Triangle, 24, uint16> triangles;
+			if (this->physicsData->triangleMeshColliders[manifold.colliderID2.colliderIndex].collider.intersects(this->physicsData->capsuleColliders[manifold.colliderID1.colliderIndex].bound, triangles)) {
+				manifold.material2 = this->physicsData->triangleMeshColliders[manifold.colliderID2.colliderIndex].material;
+				this->narrowPhase->generateContacts(this->physicsData->capsuleColliders[manifold.colliderID1.colliderIndex].collider, triangles, manifold);
+			}
+		}
+
+		void capsuleVsHeightFieldDiscrete(ContactManifold& manifold)
+		{
+			manifold.material1 = this->physicsData->capsuleColliders[manifold.colliderID1.colliderIndex].material;
+			HybridArray<Triangle, 24, uint16> triangles;
+			if (this->physicsData->heightFieldCollider.collider.intersects(this->physicsData->capsuleColliders[manifold.colliderID1.colliderIndex].bound, triangles)) {
+				manifold.material2 = this->physicsData->heightFieldCollider.material;
+				this->narrowPhase->generateContacts(this->physicsData->capsuleColliders[manifold.colliderID1.colliderIndex].collider, triangles, manifold);
+			}
+		}
+
+		TOIResult triangleTOI(const HybridArray<Triangle, 24, uint16>& triangles, const ColliderIdentifier& id)
+		{
+			Vec3 origin = this->physicsData->physicsObjects[id.objectIndex].rigidBody.prevTransform.position;
+			Vec3 direction = this->physicsData->physicsObjects[id.objectIndex].rigidBody.transform.position - this->physicsData->physicsObjects[id.objectIndex].rigidBody.prevTransform.position;
+			Ray ray = Ray(origin, direction);
+
+			SortedArray<decimal, byte> toiResults;
+			for (uint16 x = 0, len = triangles.size(); x < len; ++x) {
+				decimal t = ray.rayCastTime(triangles[x]);
+				if (t >= decimal(0.0)) {
+					toiResults.insert(t);
+				}
+			}
+
+			TOIResult r;
+			if (toiResults.empty() == false) {
+				r.t = toiResults.minimum();
+				r.state = TOIState::touching;
+			}
+
+			return r;
+		}
+
+		TOIResult convexHullVsConvexHullTOI(const AABB& aabbCast, const ColliderIdentifier& id1, const ColliderIdentifier& id2, const Transform3DRange& t1, const Transform3DRange& t2)
+		{
+			if (aabbCast.intersects(this->physicsData->convexHullColliders[id2.colliderIndex].bound)) {
+				return timeOfImpact(this->physicsData->convexHullColliders[id1.colliderIndex].collider, this->physicsData->convexHullColliders[id2.colliderIndex].collider, t1, t2);
+			}
+			return TOIResult();
+		}
+
+		TOIResult convexHullVsSphereTOI(const AABB& aabbCast, const ColliderIdentifier& id1, const ColliderIdentifier& id2, const Transform3DRange& t1, const Transform3DRange& t2)
+		{
+			if (aabbCast.intersects(this->physicsData->convexHullColliders[id2.colliderIndex].bound)) {
+				return timeOfImpact(this->physicsData->convexHullColliders[id1.colliderIndex].collider, this->physicsData->sphereColliders[id2.colliderIndex].collider, t1, t2);
+				//return timeOfImpact(this->physicsData->convexHullColliders[id1.colliderIndex].collider, this->physicsData->sphereColliders[id2.colliderIndex].bound, t1, t2);
+			}
+			return TOIResult();
+		}
+
+		TOIResult convexHullVsCapsuleTOI(const AABB& aabbCast, const ColliderIdentifier& id1, const ColliderIdentifier& id2, const Transform3DRange& t1, const Transform3DRange& t2)
+		{
+			if (aabbCast.intersects(this->physicsData->convexHullColliders[id2.colliderIndex].bound)) {
+				//return timeOfImpact(this->physicsData->convexHullColliders[id1.colliderIndex].collider, this->physicsData->capsuleColliders[id2.colliderIndex].collider, t1, t2);
+				return timeOfImpact(this->physicsData->convexHullColliders[id1.colliderIndex].collider, this->physicsData->capsuleColliders[id2.colliderIndex].bound, t1, t2);
+			}
+			return TOIResult();
+		}
+
+		TOIResult convexHullVsTriangleMeshTOI(const AABB& aabbCast, const ColliderIdentifier& id1, const ColliderIdentifier& id2, const Transform3DRange& t1, const Transform3DRange& t2)
+		{
+			HybridArray<Triangle, 24, uint16> triangles;
+			if (this->physicsData->triangleMeshColliders[id2.colliderIndex].collider.intersects(aabbCast, triangles)) {
+				return this->triangleTOI(triangles, id1);
+			}
+
+			return TOIResult();
+		}
+
+		TOIResult convexHullVsHeightFieldTOI(const AABB& aabbCast, const ColliderIdentifier& id1, const ColliderIdentifier& id2, const Transform3DRange& t1, const Transform3DRange& t2)
+		{
+			HybridArray<Triangle, 24, uint16> triangles;
+			if (this->physicsData->heightFieldCollider.collider.intersects(aabbCast, triangles)) {
+				return this->triangleTOI(triangles, id1);
+			}
+
+			return TOIResult();
+		}
+
+		TOIResult sphereVsConvexHullTOI(const AABB& aabbCast, const ColliderIdentifier& id1, const ColliderIdentifier& id2, const Transform3DRange& t1, const Transform3DRange& t2)
+		{
+			if (aabbCast.intersects(this->physicsData->convexHullColliders[id2.colliderIndex].bound)) {
+				//return timeOfImpact(this->physicsData->sphereColliders[id1.colliderIndex].collider, this->physicsData->convexHullColliders[id2.colliderIndex].collider, t1, t2);
+				return timeOfImpact(this->physicsData->sphereColliders[id1.colliderIndex].bound, this->physicsData->convexHullColliders[id2.colliderIndex].collider, t1, t2);
+			}
+			return TOIResult();
+		}
+
+		TOIResult sphereVsSphereTOI(const AABB& aabbCast, const ColliderIdentifier& id1, const ColliderIdentifier& id2, const Transform3DRange& t1, const Transform3DRange& t2)
+		{
+			if (aabbCast.intersects(this->physicsData->sphereColliders[id2.colliderIndex].bound)) {
+				//return timeOfImpact(this->physicsData->sphereColliders[id1.colliderIndex].collider, this->physicsData->sphereColliders[id2.colliderIndex].collider, t1, t2);
+				return timeOfImpact(this->physicsData->sphereColliders[id1.colliderIndex].bound, this->physicsData->sphereColliders[id2.colliderIndex].bound, t1, t2);
+			}
+			return TOIResult();
+		}
+
+		TOIResult sphereVsCapsuleTOI(const AABB& aabbCast, const ColliderIdentifier& id1, const ColliderIdentifier& id2, const Transform3DRange& t1, const Transform3DRange& t2)
+		{
+			if (aabbCast.intersects(this->physicsData->capsuleColliders[id2.colliderIndex].bound)) {
+				//return timeOfImpact(this->physicsData->sphereColliders[id1.colliderIndex].collider, this->physicsData->capsuleColliders[id2.colliderIndex].collider, t1, t2);
+				return timeOfImpact(this->physicsData->sphereColliders[id1.colliderIndex].bound, this->physicsData->capsuleColliders[id2.colliderIndex].bound, t1, t2);
+			}
+			return TOIResult();
+		}
+
+		TOIResult sphereVsTriangleMeshTOI(const AABB& aabbCast, const ColliderIdentifier& id1, const ColliderIdentifier& id2, const Transform3DRange& t1, const Transform3DRange& t2)
+		{
+			HybridArray<Triangle, 24, uint16> triangles;
+			if (this->physicsData->triangleMeshColliders[id2.colliderIndex].collider.intersects(aabbCast, triangles)) {
+				return this->triangleTOI(triangles, id1);
+			}
+
+			return TOIResult();
+		}
+
+		TOIResult sphereVsHeightFieldTOI(const AABB& aabbCast, const ColliderIdentifier& id1, const ColliderIdentifier& id2, const Transform3DRange& t1, const Transform3DRange& t2)
+		{
+			HybridArray<Triangle, 24, uint16> triangles;
+			if (this->physicsData->heightFieldCollider.collider.intersects(aabbCast, triangles)) {
+				return this->triangleTOI(triangles, id1);
+			}
+
+			return TOIResult();
+		}
+
+		TOIResult capsuleVsConvexHullTOI(const AABB& aabbCast, const ColliderIdentifier& id1, const ColliderIdentifier& id2, const Transform3DRange& t1, const Transform3DRange& t2)
+		{
+			if (aabbCast.intersects(this->physicsData->convexHullColliders[id2.colliderIndex].bound)) {
+				//return timeOfImpact(this->physicsData->capsuleColliders[id1.colliderIndex].collider, this->physicsData->convexHullColliders[id2.colliderIndex].collider, t1, t2);
+				return timeOfImpact(this->physicsData->capsuleColliders[id1.colliderIndex].bound, this->physicsData->convexHullColliders[id2.colliderIndex].collider, t1, t2);
+			}
+			return TOIResult();
+		}
+
+		TOIResult capsuleVsSphereTOI(const AABB& aabbCast, const ColliderIdentifier& id1, const ColliderIdentifier& id2, const Transform3DRange& t1, const Transform3DRange& t2)
+		{
+			if (aabbCast.intersects(this->physicsData->sphereColliders[id2.colliderIndex].bound)) {
+				//return timeOfImpact(this->physicsData->capsuleColliders[id1.colliderIndex].collider, this->physicsData->sphereColliders[id2.colliderIndex].collider, t1, t2);
+				return timeOfImpact(this->physicsData->capsuleColliders[id1.colliderIndex].bound, this->physicsData->sphereColliders[id2.colliderIndex].bound, t1, t2);
+			}
+			return TOIResult();
+		}
+
+		TOIResult capsuleVsCapsuleTOI(const AABB& aabbCast, const ColliderIdentifier& id1, const ColliderIdentifier& id2, const Transform3DRange& t1, const Transform3DRange& t2)
+		{
+			if (aabbCast.intersects(this->physicsData->capsuleColliders[id2.colliderIndex].bound)) {
+				//return timeOfImpact(this->physicsData->capsuleColliders[id1.colliderIndex].collider, this->physicsData->capsuleColliders[id2.colliderIndex].collider, t1, t2);
+				return timeOfImpact(this->physicsData->capsuleColliders[id1.colliderIndex].bound, this->physicsData->capsuleColliders[id2.colliderIndex].bound, t1, t2);
+			}
+			return TOIResult();
+		}
+
+		TOIResult capsuleVsTriangleMeshTOI(const AABB& aabbCast, const ColliderIdentifier& id1, const ColliderIdentifier& id2, const Transform3DRange& t1, const Transform3DRange& t2)
+		{
+			HybridArray<Triangle, 24, uint16> triangles;
+			if (this->physicsData->triangleMeshColliders[id2.colliderIndex].collider.intersects(aabbCast, triangles)) {
+				return this->triangleTOI(triangles, id1);
+			}
+
+			return TOIResult();
+		}
+
+		TOIResult capsuleVsHeightFieldTOI(const AABB& aabbCast, const ColliderIdentifier& id1, const ColliderIdentifier& id2, const Transform3DRange& t1, const Transform3DRange& t2)
+		{
+			HybridArray<Triangle, 24, uint16> triangles;
+			if (this->physicsData->heightFieldCollider.collider.intersects(aabbCast, triangles)) {
+				return this->triangleTOI(triangles, id1);
+			}
+
+			return TOIResult();
 		}
 	};
 }

@@ -34,8 +34,26 @@
 
 namespace mech {
 
+	/*
+		--------------heightFeild cell-----------------
+		(1)------(3)
+		 |        |
+		 |        |
+		 |        |
+		(2)------(4)
+		
+		the data passed to the heightField is a one dimensional array of height values for each of the points
+		in the heightField, the data is assumed to be in the order below,,,,,,,,,,
+											zxxxxxxxxx
+											z
+											z
+											z
+
+		TriangleDiagonalMode::oneToFour - diagonal connects point 1 to point 4
+		TriangleDiagonalMode::twoTothree - diagonal connects point 2 to point 2
+	*/
 	//////////////////////////////////////////////////////////////////////////////////////////////////////////
-	enum class TriangulationMode : byte { none = 0, oneToFour = 1 << 0, twoTothree = 1 << 1 };
+	enum class TriangleDiagonalMode : byte { none = 0, oneToFour = 1 << 0, twoTothree = 1 << 1 };
 
 	//////////////////////////////////////////////////////////////////////////////////////////////////////////
 	struct HeightField {
@@ -46,9 +64,9 @@ namespace mech {
 			decimal xTranslation = decimal(0.0);
 			decimal zTranslation = decimal(0.0);
 			decimal maxHeight = decimal(0.0);
-			uint16 numOfGridsX = 0;
-			uint16 numOfGridsZ = 0;
-			TriangulationMode triangulationMode = TriangulationMode::none;
+			uint16 numOfCellsAlongX = 0;
+			uint16 numOfCellsAlongZ = 0;
+			TriangleDiagonalMode diagonalMode = TriangleDiagonalMode::none;
 		};
 
 		decimal* heightData = nullptr;
@@ -56,9 +74,9 @@ namespace mech {
 		decimal xTranslation = decimal(0.0);
 		decimal zTranslation = decimal(0.0);
 		decimal maxHeight = decimal(0.0);
-		uint16 numOfGridsX = 0;
-		uint16 numOfGridsZ = 0;
-		TriangulationMode triangulationMode = TriangulationMode::none;
+		uint16 numOfCellsAlongX = 0;
+		uint16 numOfCellsAlongZ = 0;
+		TriangleDiagonalMode diagonalMode = TriangleDiagonalMode::none;
 
 		void initialise(const Parameters& params)
 		{
@@ -67,9 +85,9 @@ namespace mech {
 			this->xTranslation = params.xTranslation;
 			this->zTranslation = params.zTranslation;
 			this->maxHeight = params.maxHeight;
-			this->numOfGridsX = params.numOfGridsX;
-			this->numOfGridsZ = params.numOfGridsZ;
-			this->triangulationMode = params.triangulationMode;
+			this->numOfCellsAlongX = params.numOfCellsAlongX;
+			this->numOfCellsAlongZ = params.numOfCellsAlongZ;
+			this->diagonalMode = params.diagonalMode;
 		}
 
 		bool intersects(const AABB& aabb, HybridArray<Triangle, 24, uint16>& triangles) const
@@ -78,21 +96,18 @@ namespace mech {
 
 			bool hit = false;
 
-			uint32 minX = -1;
-			int32 maxX = -1;
-			uint32 minZ = -1;
-			int32 maxZ = -1;
+			decimal minX = decimalMAX;
+			decimal maxX = -decimalMAX;
+			decimal minZ = decimalMAX;
+			decimal maxZ = -decimalMAX;
 
 			Vec3 points[4] = { aabb.min, aabb.max, Vec3(aabb.max.x, aabb.min.y, aabb.min.z), Vec3(aabb.min.x, aabb.max.y, aabb.max.z) };
 			for (byte i = 0; i < 4; ++i) {
 
-				decimal heightFieldX = points[i].x - this->xTranslation;
-				decimal heightFieldZ = points[i].z - this->zTranslation;
+				int32 gridX = int32((points[i].x - this->xTranslation) / this->gridSize);
+				int32 gridZ = int32((points[i].z - this->zTranslation) / this->gridSize);
 
-				int32 gridX = int(heightFieldX / this->gridSize);
-				int32 gridZ = int(heightFieldZ / this->gridSize);
-
-				if (gridX < 0 || gridX > this->numOfGridsX || gridZ < 0 || gridZ > this->numOfGridsZ) continue;
+				if (gridX < 0 || gridX > this->numOfCellsAlongX || gridZ < 0 || gridZ > this->numOfCellsAlongZ) continue;
 
 				minX = gridX < minX ? gridX : minX;
 				maxX = gridX > maxX ? gridX : maxX;
@@ -113,15 +128,15 @@ namespace mech {
 					decimal xCord1 = x * this->gridSize + this->xTranslation;
 					decimal xCord2 = xCord1 + this->gridSize;
 
-					Vec3 a1 = Vec3(xCord1, this->heightData[(z *       this->numOfGridsZ) +   x     ], zCord1);
-					Vec3 a2 = Vec3(xCord2, this->heightData[(z *       this->numOfGridsZ) +  (x + 1)], zCord1);
-					Vec3 a3 = Vec3(xCord1, this->heightData[((z + 1) * this->numOfGridsZ) +   x     ], zCord2);
-					Vec3 a4 = Vec3(xCord2, this->heightData[((z + 1) * this->numOfGridsZ) +  (x + 1)], zCord2);
+					Vec3 a1 = Vec3(xCord1, this->heightData[(z *       this->numOfCellsAlongZ) + x],       zCord1);
+					Vec3 a2 = Vec3(xCord1, this->heightData[((z + 1) * this->numOfCellsAlongZ) + x],       zCord2);
+					Vec3 a3 = Vec3(xCord2, this->heightData[(z *       this->numOfCellsAlongZ) + (x + 1)], zCord1);
+					Vec3 a4 = Vec3(xCord2, this->heightData[((z + 1) * this->numOfCellsAlongZ) + (x + 1)], zCord2);
 
 					Triangle t[2];
-					if (this->triangulationMode == TriangulationMode::oneToFour) {
-						t[0] = Triangle(a1, a3, a4);
-						t[1] = Triangle(a4, a2, a1);
+					if (this->diagonalMode == TriangleDiagonalMode::oneToFour) {
+						t[0] = Triangle(a1, a2, a4);
+						t[1] = Triangle(a4, a3, a1);
 					}
 					else {
 						t[0] = Triangle(a1, a2, a3);
@@ -150,39 +165,39 @@ namespace mech {
 			int32 gridX = int(heightFieldX / this->gridSize);
 			int32 gridZ = int(heightFieldZ / this->gridSize);
 
-			if (gridX < 0 || gridX > this->numOfGridsX || gridZ < 0 || gridZ > this->numOfGridsZ) return decimalNAN;
+			if (gridX < 0 || gridX > this->numOfCellsAlongX || gridZ < 0 || gridZ > this->numOfCellsAlongZ) return decimalNAN;
 
-			gridX = gridX == this->numOfGridsX ? gridX - 1 : gridX;
-			gridZ = gridZ == this->numOfGridsZ ? gridZ - 1 : gridZ;
+			gridX = gridX == this->numOfCellsAlongX ? gridX - 1 : gridX;
+			gridZ = gridZ == this->numOfCellsAlongZ ? gridZ - 1 : gridZ;
 
 			decimal xpos = heightFieldX - gridX * this->gridSize;
 			decimal zpos = heightFieldZ - gridZ * this->gridSize;
 
 			Vec3 p1, p2, p3;
-			if (this->triangulationMode == TriangulationMode::oneToFour) {
+			if (this->diagonalMode == TriangleDiagonalMode::oneToFour) {
 
 				if (xpos / this->gridSize >= (1 - zpos / this->gridSize)) {
-					p1 = Vec3(decimal(0.0),   this->heightData[(gridZ * this->numOfGridsZ) +         gridX     ], decimal(0.0));
-					p2 = Vec3(decimal(0.0),   this->heightData[(gridZ * this->numOfGridsZ) +        (gridX + 1)], this->gridSize);
-					p3 = Vec3(this->gridSize, this->heightData[((gridZ + 1) * this->numOfGridsZ) +  (gridX + 1)], this->gridSize);
+					p1 = Vec3(decimal(0.0),   this->heightData[(gridZ * this->numOfCellsAlongZ) +         gridX     ], decimal(0.0));
+					p2 = Vec3(decimal(0.0),   this->heightData[(gridZ * this->numOfCellsAlongZ) +        (gridX + 1)], this->gridSize);
+					p3 = Vec3(this->gridSize, this->heightData[((gridZ + 1) * this->numOfCellsAlongZ) +  (gridX + 1)], this->gridSize);
 				}
 				else {
-					p1 = Vec3(decimal(0.0),   this->heightData[(gridZ * this->numOfGridsZ) +         gridX     ], decimal(0.0));
-					p2 = Vec3(this->gridSize, this->heightData[((gridZ + 1) * this->numOfGridsZ) +  (gridX + 1)], this->gridSize);
-					p3 = Vec3(this->gridSize, this->heightData[((gridZ + 1) * this->numOfGridsZ) +   gridX     ], decimal(0.0));
+					p1 = Vec3(decimal(0.0),   this->heightData[(gridZ * this->numOfCellsAlongZ) +         gridX     ], decimal(0.0));
+					p2 = Vec3(this->gridSize, this->heightData[((gridZ + 1) * this->numOfCellsAlongZ) +  (gridX + 1)], this->gridSize);
+					p3 = Vec3(this->gridSize, this->heightData[((gridZ + 1) * this->numOfCellsAlongZ) +   gridX     ], decimal(0.0));
 				}
 			}
 			else {
 
 				if (xpos / this->gridSize <= (1 - zpos / this->gridSize)) {
-					p1 = Vec3(decimal(0.0),   this->heightData[(gridZ * this->numOfGridsZ) +         gridX     ], decimal(0.0));
-					p2 = Vec3(decimal(0.0),   this->heightData[(gridZ * this->numOfGridsZ) +        (gridX + 1)], this->gridSize);
-					p3 = Vec3(this->gridSize, this->heightData[((gridZ + 1) * this->numOfGridsZ) +   gridX     ], decimal(0.0));
+					p1 = Vec3(decimal(0.0),   this->heightData[(gridZ * this->numOfCellsAlongZ) +         gridX     ], decimal(0.0));
+					p2 = Vec3(decimal(0.0),   this->heightData[(gridZ * this->numOfCellsAlongZ) +        (gridX + 1)], this->gridSize);
+					p3 = Vec3(this->gridSize, this->heightData[((gridZ + 1) * this->numOfCellsAlongZ) +   gridX     ], decimal(0.0));
 				}
 				else {
-					p1 = Vec3(this->gridSize, this->heightData[((gridZ + 1) * this->numOfGridsZ) +   gridX     ], decimal(0.0));
-					p2 = Vec3(decimal(0.0),   this->heightData[(gridZ * this->numOfGridsZ) +        (gridX + 1)], this->gridSize);
-					p3 = Vec3(this->gridSize, this->heightData[((gridZ + 1) * this->numOfGridsZ) +  (gridX + 1)], this->gridSize);
+					p1 = Vec3(this->gridSize, this->heightData[((gridZ + 1) * this->numOfCellsAlongZ) +   gridX     ], decimal(0.0));
+					p2 = Vec3(decimal(0.0),   this->heightData[(gridZ * this->numOfCellsAlongZ) +        (gridX + 1)], this->gridSize);
+					p3 = Vec3(this->gridSize, this->heightData[((gridZ + 1) * this->numOfCellsAlongZ) +  (gridX + 1)], this->gridSize);
 				}
 			}
 

@@ -38,8 +38,9 @@ namespace mech {
 #define uint64 unsigned long long
 #define byte unsigned char
 
-	//double is used by default, set to 0 to use float.
-#define mechDOUBLE_PRECISION 1
+#define mech_ENABLE_DOUBLE_PRECISION 1
+#define mech_ENABLE_PROFILER 1
+#define mech_ENABLE_LOGGER 1
 
 	template<typename T>
 	bool isAValidIndex(const T& number)
@@ -49,3 +50,8 @@ namespace mech {
 }
 
 #endif
+
+/*
+TODO:
+-time of impact - unwanted behaviour noticed.
+*/

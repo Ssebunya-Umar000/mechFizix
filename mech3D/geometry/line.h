@@ -43,7 +43,7 @@ namespace mech {
 	struct Ray;
 	struct LineSegment;
 
-	struct Mat4x4;
+	struct Transform3D;
 
 	struct Line {
 		Vec3 pointOnLine;
@@ -74,8 +74,10 @@ namespace mech {
 		bool intersects(const Ray& ray) const;
 		bool intersects(const LineSegment& lineSegment) const;
 
-		void transform(const Mat4x4& mat);
-		Line transformed(const Mat4x4& mat) const;
+		void transform(const Transform3D& t);
+		Line transformed(const Transform3D& t) const;
+
+		String toString() const { return String("Line(pointOnLine:") + this->pointOnLine.toString() + String(" direction:") + this->direction.toString() + String(")"); }
 	};
 }
 

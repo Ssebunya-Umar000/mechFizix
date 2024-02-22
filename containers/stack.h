@@ -85,41 +85,26 @@ namespace mech {
 		////////////////////////////////////////////////////////////////////////////////////////////////////////
 		class Iterator {
 		private:
-			T* mCurrent = nullptr;
-			const Stack<T, sizeType>* mStack = nullptr;
-			sizeType mIndex = -1;
+			const Stack<T, sizeType>* mStack;
+			sizeType mCurrentIndex = -1;
 
 		public:
 
-			Iterator() {}
+			Iterator(const Stack<T, sizeType>* stack) : mStack(stack) {}
 
-			Iterator(const Stack<T, sizeType>* stack) : mStack(stack)
+			Iterator(const Stack<T, sizeType>* stack, const sizeType& index) : mStack(stack)
 			{
 				if (this->mStack->empty() == false) {
-					this->mIndex = this->mStack->mData.size() - 1;
-					this->mCurrent = &this->mStack->mData[this->mIndex];
+					this->mCurrentIndex = index;
 				}
-			}
-
-			T& data()
-			{
-				return *this->mCurrent;
-			}
-
-			T& operator*()
-			{
-				return *this->mCurrent;
 			}
 
 			Iterator& operator++()
 			{
-				--this->mIndex;
+				--this->mCurrentIndex;
 
-				if (this->mIndex == (sizeType)(-1) || this->mIndex < 0) {
-					this->mCurrent = nullptr;
-				}
-				else {
-					this->mCurrent = &this->mStack->mData[this->mIndex];
+				if (this->mCurrentIndex == (sizeType)(-1) || this->mCurrentIndex < 0) {
+					this->mCurrentIndex = -1;
 				}
 
 				return *this;
@@ -132,30 +117,45 @@ namespace mech {
 				return *this;
 			}
 
+			T& data()
+			{
+				return this->mStack->mData[this->mCurrentIndex];
+			}
+
+			T& operator*()
+			{
+				return this->mStack->mData[this->mCurrentIndex];
+			}
+
+			sizeType index()
+			{
+				return this->mCurrentIndex;
+			}
+
 			bool operator==(const Iterator& other)
 			{
-				return this->mCurrent == other.mCurrent;
+				return this->mCurrentIndex == other.mCurrentIndex && this->mStack == other.mStack;
 			}
 
 			bool operator!=(const Iterator& other)
 			{
-				return this->mCurrent != other.mCurrent;
+				return this->mCurrentIndex != other.mCurrentIndex || this->mStack != other.mStack;
 			}
 
 			bool isVoid() const
 			{
-				return this->mCurrent == nullptr;
+				return this->mCurrentIndex == (sizeType)(-1);
 			}
 		};
 
 		Iterator begin() const
 		{
-			return Iterator(this);
+			return Iterator(this, this->mData.size() - 1);
 		}
 
 		Iterator end() const
 		{
-			return Iterator();
+			return Iterator(this);
 		}
 	};
 }

@@ -33,9 +33,9 @@
 
 namespace mech {
 
-#define MAXIMUM_NUM_POINTS 10
-#define MAXIMUM_TOI_ITERATIONS 50
-#define MAXIMUM_ROOT_ITERATIONS 50
+#define MAXIMUM_DEEP_POINT_ITERATIONS 10
+#define MAXIMUM_TOI_ITERATIONS 10
+#define MAXIMUM_ROOT_ITERATIONS 10
 
 	//////////////////////////////////////////////////////////////////////////////////////////////////////////
 	enum class TOIState : byte { overlaping = 1 << 0, touching = 1 << 1, separated = 1 << 2 };
@@ -48,7 +48,7 @@ namespace mech {
 
 	//////////////////////////////////////////////////////////////////////////////////////////////////////////
 	template<class T1, class T2>
-	TOIResult timeOfImpact(const T1& convexObject1, const T2& convexObject2, const Transform3DPair& transformA, const Transform3DPair& transformB, const decimal& tMax = decimal(1.0), const decimal& tolerance = decimal(0.25))
+	TOIResult timeOfImpact(const T1& convexShape1, const T2& convexShape2, const Transform3DRange& transform1, const Transform3DRange& transform2, const decimal& tMax = decimal(1.0), const decimal& tolerance = decimal(0.1))
 	{
 
 		struct SeperationFunction {
@@ -56,33 +56,33 @@ namespace mech {
 			Vec3 axis;
 			Vec3 supportA = nanVEC3;
 			Vec3 supportB = nanVEC3;
-			const Transform3DPair& transformA;
-			const Transform3DPair& transformB;
-			const T1& convexObjectA;
-			const T2& convexObjectB;
+			const Transform3DRange& transform1;
+			const Transform3DRange& transform2;
+			const T1& convexShape1;
+			const T2& convexShape2;
 
-			SeperationFunction(const decimal& t, const T1& object1, const T2& object2, const Transform3DPair& tA, const Transform3DPair& tB, const GJKResult& gjk) : convexObjectA(object1), convexObjectB(object2), transformA(tA), transformB(tB)
+			SeperationFunction(const decimal& t, const T1& object1, const T2& object2, const Transform3DRange& tA, const Transform3DRange& tB, const GJKResult& gjk) : convexShape1(object1), convexShape2(object2), transform1(tA), transform2(tB)
 			{
 				this->axis = normalise(gjk.closest2 - gjk.closest1);
 			}
 
-			decimal calculateSeparation(const decimal & t)
+			decimal calculateSeparation(const decimal& t)
 			{
-				Transform3D tA = transformA.interpolate(t);
-				Transform3D tB = transformB.interpolate(t);
+				Transform3D tA = transform1.interpolate(t);
+				Transform3D tB = transform2.interpolate(t);
 
-				this->supportA = this->convexObjectA.getSupportPoint(tA.toMatrix().toMat3x3() * this->axis);
-				this->supportB = this->convexObjectB.getSupportPoint(tB.toMatrix().toMat3x3() * -this->axis);
+				this->supportA = this->convexShape1.getSupportPoint(tA * this->axis);
+				this->supportB = this->convexShape2.getSupportPoint(tB * -this->axis);
 
-				return dotProduct(tB.toMatrix() * this->supportB - tA.toMatrix() * this->supportA, this->axis);
+				return dotProduct(tB * this->supportB - tA * this->supportA, this->axis);
 			}
 
-			decimal reCalculateSeparation(const decimal & t)
+			decimal reCalculateSeparation(const decimal& t)
 			{
-				Transform3D tA = transformA.interpolate(t);
-				Transform3D tB = transformB.interpolate(t);
+				Transform3D tA = transform1.interpolate(t);
+				Transform3D tB = transform2.interpolate(t);
 
-				return dotProduct(tB.toMatrix() * this->supportB - tA.toMatrix() * this->supportA, this->axis);
+				return dotProduct(tB * this->supportB - tA * this->supportA, this->axis);
 			}
 		};
 
@@ -95,7 +95,7 @@ namespace mech {
 		byte toiIterations = 0;
 		while (toiIterations < MAXIMUM_TOI_ITERATIONS) {
 
-			GJKResult gjk = GJKAlgorithm(convexObject1.transformed(transformA.interpolate(t1).toMatrix()), convexObject2.transformed(transformB.interpolate(t1).toMatrix()), false);
+			GJKResult gjk = GJKAlgorithm(convexShape1.transformed(transform1.interpolate(t1)), convexShape2.transformed(transform2.interpolate(t1)), false);
 
 			if (gjk.overlap == true) {
 				result.state = TOIState::overlaping;
@@ -109,11 +109,11 @@ namespace mech {
 				return result;
 			}
 
-			SeperationFunction fcn(t1, convexObject1, convexObject2, transformA, transformB, gjk);
+			SeperationFunction fcn(t1, convexShape1, convexShape2, transform1, transform2, gjk);
 
 			decimal t2 = tMax;
 			byte deepestPointIterations = 0;
-			while (deepestPointIterations < MAXIMUM_NUM_POINTS) {
+			while (deepestPointIterations < MAXIMUM_DEEP_POINT_ITERATIONS) {
 
 				decimal s2 = fcn.calculateSeparation(t2);
 

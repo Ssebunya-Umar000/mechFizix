@@ -32,32 +32,56 @@
 
 namespace mech {
 
+	//////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+	//////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+	//////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 	struct Transform3D {
-		Quaternion orientation = IDENTITY_QUATERNION;
+		
 		Vec3 position;
+		Quaternion orientation = IDENTITY_QUATERNION;
 
 		Transform3D(){}
+		Transform3D(const Vec3& p) : position(p) {}
+		Transform3D(const Quaternion& o) : orientation(o) {}
 		Transform3D(const Vec3& p, const Quaternion& o) : position(p), orientation(o) {}
+
+		Transform3D operator*(const Transform3D& other) const { return Transform3D(this->position + this->orientation * other.position, this->orientation * other.orientation); }
+		Vec3 operator*(const Vec3& vec) const { return (this->orientation * vec) + this->position; }
 
 		Mat4x4 toMatrix() const
 		{
 			Mat4x4 mat;
-			mat = Mat4x4(matrixFromQuarternion(orientation));
-			mat.setColumn(3, Vec4(position, decimal(1.0)));
+			mat = Mat4x4(matrixFromQuarternion(this->orientation));
+			mat.setColumn(3, Vec4(this->position, decimal(1.0)));
 			return mat;
 		}
+
+		String toString() const { return String("Transform3D(") + this->position.toString() + this->orientation.toString() + String(")"); }
 	};
 
-	struct Transform3DPair {
+	inline static Transform3D getInverse(const Transform3D& t)
+	{
+		Quaternion invQuaternion = getInverse(t.orientation);
+		return Transform3D(invQuaternion * (-t.position), invQuaternion);
+	}
+
+	//////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+	//////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+	//////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+	struct Transform3DRange {
+		Transform3D inverseTransform2;
 		Transform3D transform1;
 		Transform3D transform2;
 
-		Transform3DPair() {}
-		Transform3DPair(const Transform3D& t1, const Transform3D& t2) : transform1(t1), transform2(t2) {}
+		Transform3DRange() {}
+		Transform3DRange(const Transform3D& t1, const Transform3D& t2) : transform1(t1), transform2(t2)
+		{
+			this->inverseTransform2 = getInverse(this->transform2);
+		}
 
 		Transform3D interpolate(const decimal& factor) const
 		{
-			return Transform3D(lerp(transform1.position, transform2.position, factor), slerp(transform1.orientation, transform2.orientation, factor));
+			return this->inverseTransform2 * Transform3D(lerp(this->transform1.position, this->transform2.position, factor), slerp(this->transform1.orientation, this->transform2.orientation, factor));
 		}
 	};
 }

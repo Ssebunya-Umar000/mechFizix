@@ -36,19 +36,25 @@
 
 namespace mech {
 
-	using Island = AVLTree<Pair<uint32, ColliderIdentifier>, uint32>; //AVLTree<Pair<collider id, identifier>, ...
+	///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+	struct PhysicsConfigurations {
+		RigidBodyConfigurations* rigidBodyConfigs = nullptr;
+		ConstraintConfigurations* constraintConfigs = nullptr;
+		decimal minimalDispacement = decimal(0.025);
+		decimal timeOfImpactBias = decimal(0.01);
+		byte framesToRetainCache = 10;
+	};
 
-	struct PhysicsData {
+	///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+	class PhysicsData {
 
-		PhysicsData() {}
-		PhysicsData(const PhysicsData&) = delete;
-		PhysicsData& operator=(const PhysicsData&) = delete;
+	public:
 
 		Octree octree;
-		HashTable<uint16, uint16> activeOctreeNodes;
 
 		RigidArray<PhysicsObject, uint32> physicsObjects;
-		RigidArray<Island, uint16> islands;
+		
+		RigidArray<AVLTree<Pair<uint32, ColliderIdentifier>, uint32>, uint16> islands; //RigidArray<AVLTree<Pair<colliderID, ColliderIdentifier>............
 
 		HeightFieldCollider heightFieldCollider;
 		RigidArray<ConvexHullCollider, uint32> convexHullColliders;
@@ -57,35 +63,37 @@ namespace mech {
 		RigidArray<TriangleMeshCollider, uint32> triangleMeshColliders;
 
 		DynamicArray<ContactConstraint, uint32> contactConstraints;
-		HashTable<Pair<uint32, ContactConstraint::ImpulseCache>, uint32> contactImpulseCache;
-		HashTable<Pair<uint32, HullVsHullContactCache>, uint32> hullVsHullContactCache;
-		HashTable<uint32, uint32> manifoldIDs;
+		HashTable<Pair<uint32, ContactConstraint::ImpulseCache>, uint32> contactImpulseCache; //HashTable<Pair<manifoldID, ContactConstraint::ImpulseCache>............
+		HashTable<Pair<uint32, HullVsHullContactCache>, uint32> hullVsHullContactCache; //HashTable<Pair<manifoldID, HullVsHullContactCache>............
+		HashTable<Pair<uint32, CollisionFlag>, uint32> finishedCollisions; //HashTable<Pair<manifoldID, CollisionFlag>............
 
 		RigidArray<HingeConstraint, uint16> hingeConstraints;
 		RigidArray<ConeConstraint, uint16> coneConstraints;
 		RigidArray<MotorConstraint, uint16> motorConstraints;
 
-		const byte framesToRetainCache = 10;
+		PhysicsConfigurations configurations;
 
-		//rigid body motion settings
-		const Vec3 gravity = Vec3(decimal(0.0), decimal(-9.8), decimal(0.0));
-		const decimal linearDamping = decimal(0.5);
-		const decimal angularDamping = decimal(0.5);
-		const decimal sleepEpsilon = decimal(1e-4);
-		const decimal maxMotion = sleepEpsilon * decimal(10.0);
-		const decimal baseMotion = sleepEpsilon * decimal(1.015);
+		PhysicsData()
+		{
+			this->mAABBFunctionPointers[0] = &PhysicsData::convexHullAABB;
+			this->mAABBFunctionPointers[1] = &PhysicsData::sphereAABB;
+			this->mAABBFunctionPointers[2] = &PhysicsData::capsuleAABB;
+			this->mAABBFunctionPointers[3] = &PhysicsData::triangleMeshAABB;
+		}
+		
+		PhysicsData(const PhysicsData&) = delete;
+		PhysicsData& operator=(const PhysicsData&) = delete;
 
-		//constraint solver settings
-		const decimal baumgarteFactor = decimal(0.3);
-		const byte velocityIterations = 5;
-		const byte positionIterations = 3;
+		const AABB& getColliderAABB(const ColliderIdentifier& colliderID) { return (this->*mAABBFunctionPointers[(uint32)(colliderID.type)])(colliderID.colliderIndex); }
 
-		//contact constraint settings
-		const decimal linearSlop = decimal(0.01);
-		const decimal minVelocityForRestitution = decimal(1.5);
+	private:
 
-		//contact generator settings
-		const decimal minimalDispacement = decimal(0.025);
+		const AABB& (PhysicsData::* mAABBFunctionPointers[4]) (const uint32&) = {};
+
+		const AABB& convexHullAABB(const uint32& colliderIndex) { return this->convexHullColliders[colliderIndex].bound; }
+		const AABB& sphereAABB(const uint32& colliderIndex) { return this->sphereColliders[colliderIndex].bound; }
+		const AABB& capsuleAABB(const uint32& colliderIndex) { return this->capsuleColliders[colliderIndex].bound; }
+		const AABB& triangleMeshAABB(const uint32& colliderIndex) { return this->triangleMeshColliders[colliderIndex].bound; }
 	};
 }
 

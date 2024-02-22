@@ -121,7 +121,7 @@ namespace mech {
 			}
 		}
 
-		void eraseDataAtIndex(const sizeType& index)
+		void eraseDataAtIndex(const sizeType index)
 		{
 			if (index < stackCapacity) {
 				this->mStackData.eraseDataAtIndex(index);
@@ -222,30 +222,25 @@ namespace mech {
 		///////////////////////////////////////////////////
 		class Iterator {
 		private:
-			const T* mCurrent = nullptr;
 			const HybridArray<T, stackCapacity, sizeType>* mArray;
-			sizeType mIndex = 0;
+			sizeType mCurrentIndex = -1;
 
 		public:
 
-			Iterator() : mArray(nullptr) {}
+			Iterator(const HybridArray<T, stackCapacity, sizeType>* array) : mArray(array) {}
 
 			Iterator(const HybridArray<T, stackCapacity, sizeType>* array, const sizeType& index) : mArray(array)
 			{
-				this->mIndex = index;
-				if (this->mArray->size() > 0) {
-					this->mCurrent = &this->mArray->operator[](this->mIndex);
+				if (this->mArray->empty() == false) {
+					this->mCurrentIndex = index;
 				}
 			}
 
 			Iterator& operator++()
 			{
-				++this->mIndex;
-				if (this->mArray->size() == this->mIndex) {
-					this->mCurrent = nullptr;
-				}
-				else {
-					this->mCurrent = &this->mArray->operator[](this->mIndex);
+				++this->mCurrentIndex;
+				if (this->mArray->size() == this->mCurrentIndex) {
+					this->mCurrentIndex = -1;
 				}
 
 				return *this;
@@ -253,12 +248,11 @@ namespace mech {
 
 			Iterator& operator--()
 			{
-				if (this->mIndex == 0) {
-					this->mCurrent = nullptr;
+				if (this->mCurrentIndex == 0) {
+					this->mCurrentIndex = -1;
 				}
 				else {
-					--this->mIndex;
-					this->mCurrent = &this->mArray->operator[](this->mIndex);
+					--this->mCurrentIndex;
 				}
 
 				return *this;
@@ -266,7 +260,7 @@ namespace mech {
 
 			Iterator& operator++(int)
 			{
-				++* this;
+				++*this;
 				return *this;
 			}
 
@@ -276,34 +270,34 @@ namespace mech {
 				return *this;
 			}
 
-			const T& data() const
-			{
-				return *this->mCurrent;
-			}
-
 			sizeType index() const
 			{
-				return this->mIndex;
+				return this->mCurrentIndex;
+			}
+
+			const T& data() const
+			{
+				return this->mArray->operator[](this->mCurrentIndex);
 			}
 
 			T& operator*()
 			{
-				return *this->mCurrent;
+				return this->mArray->operator[](this->mCurrentIndex);
 			}
 
 			bool operator==(const Iterator& other) const
 			{
-				return this->mCurrent == other.mCurrent;
+				return this->mCurrentIndex == other.mCurrentIndex && this->mArray == other.mArray;
 			}
 
 			bool operator!=(const Iterator& other) const
 			{
-				return !(*this == other);
+				return this->mCurrentIndex != other.mCurrentIndex || this->mArray != other.mArray;
 			}
 
 			bool isVoid() const
 			{
-				return this->mCurrent == nullptr;
+				return this->mCurrentIndex == (sizeType)(-1);
 			}
 		};
 
@@ -319,7 +313,7 @@ namespace mech {
 
 		Iterator end() const
 		{
-			return Iterator();
+			return Iterator(this);
 		}
 	};
 }

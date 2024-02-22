@@ -69,7 +69,7 @@ namespace mech {
 					result = magnitudeSq(this->points[0].W - this->points[1].W) > mathEPSILON;
 				}
 				else if (this->numPoints == 3) {
-					result = magnitudeSq(crossProduct(this->points[1].W - this->points[0].W, this->points[2].W - this->points[0].W)) > square(mathEPSILON);
+					result = magnitudeSq(crossProduct(this->points[1].W - this->points[0].W, this->points[2].W - this->points[0].W)) > mathEPSILON;
 				}
 				else if (this->numPoints == 4) {
 					result = mathABS(dotProduct((this->points[1].W - this->points[0].W), crossProduct((this->points[2].W - this->points[0].W), this->points[3].W - this->points[0].W))) > mathEPSILON;
@@ -243,10 +243,7 @@ namespace mech {
 
 				this->barrycentricCoords = HelperFunctions::tetrahedronBarrycentricCoords(this->simplex.points[0].W, this->simplex.points[1].W, this->simplex.points[2].W, this->simplex.points[3].W);
 			}
-		}
 
-		void clean()
-		{
 			this->closestPoint.P = Vec3();
 			this->closestPoint.Q = Vec3();
 
@@ -282,7 +279,7 @@ namespace mech {
 	//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 	struct GJKResult {
 		bool overlap = false;
-		Vec3 separatingAxis = nanVEC3;
+		Vec3 searchDirection = nanVEC3;
 		Vec3 closest1 = nanVEC3;
 		Vec3 closest2 = nanVEC3;
 	};
@@ -291,27 +288,23 @@ namespace mech {
 	//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 	//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 	template<typename T1, typename T2>
-	static GJKResult GJKAlgorithm(const T1& convexObject1, const T2& convexObject2, bool isOverlapTest, const Vec3& direction = Vec3(), const decimal& toleranceSq = decimal(1e-24))
+	static GJKResult GJKAlgorithm(const T1& convexShape1, const T2& convexShape2, bool isOverlapTest, const Vec3& direction = Vec3(), const decimal& toleranceSq = decimal(0.01))
 	{
 		GJKResult result;
 
 		GJK gjk;
 
-		Vec3 d = direction;
+		Vec3 searchDirection = direction;
 		decimal prevLenSq = decimalMAX;
 
 		byte iterations = 0;
 		while (iterations++ < MAXIMUM_GJK_ITERATIONS) {
 
-			gjk.simplex.addPoint(convexObject1.getSupportPoint(d), convexObject2.getSupportPoint(-d));
+			gjk.simplex.addPoint(convexShape1.getSupportPoint(searchDirection), convexShape2.getSupportPoint(-searchDirection));
 
-			if (isOverlapTest == true) {
-				if (dotProduct(d, gjk.simplex.points[gjk.simplex.numPoints - 1].W) < decimal(0.0)) {
-					result.overlap = false;
-					gjk.update();
-					gjk.clean();
-					break;
-				}
+			if (isOverlapTest == true && dotProduct(searchDirection, gjk.simplex.points[gjk.simplex.numPoints - 1].W) < decimal(0.0)) {
+				result.overlap = false;
+				break;
 			}
 
 			if (gjk.simplex.isAffinelyDependent() == false) {
@@ -321,16 +314,13 @@ namespace mech {
 
 			if (gjk.simplex.numPoints == 4) {
 				result.overlap = gjk.simplex.containsOrigin();
-				gjk.update();
-				gjk.clean();
 				break;
 			}
 
 			gjk.update();
-			gjk.clean();
 
-			d = -gjk.closestPoint.W;
-			decimal dirLenSq = magnitudeSq(d);
+			searchDirection = -gjk.closestPoint.W;
+			decimal dirLenSq = magnitudeSq(searchDirection);
 
 			if (dirLenSq > prevLenSq) {
 				result.overlap = false;
@@ -357,7 +347,7 @@ namespace mech {
 
 		assert(iterations < MAXIMUM_GJK_ITERATIONS);
 
-		result.separatingAxis = d;
+		result.searchDirection = searchDirection;
 		result.closest1 = gjk.closestPoint.P;
 		result.closest2 = gjk.closestPoint.Q;
 

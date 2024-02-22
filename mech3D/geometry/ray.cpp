@@ -40,6 +40,7 @@
 
 #include"algorithms/SAT.h"
 #include"algorithms/GJK.h"
+#include"../../math/transform.h"
 
 namespace mech {
 	
@@ -262,7 +263,26 @@ namespace mech {
 
 	decimal Ray::rayCastTime(const Triangle& triangle) const
 	{
-		return rayCastTime(triangle.toPolygon());
+		Vec3 vE1 = triangle.b - triangle.a;
+		Vec3 vE2 = triangle.c - triangle.a;
+
+		Vec3 vP = crossProduct(this->direction, vE2);
+
+		decimal det = dotProduct(vE1, vP);
+		if (mathABS(det) <= mathEPSILON) return decimal(-1.0);
+		decimal recipDet = decimal(1.0) / det;
+
+		Vec3 vT = this->origin - triangle.a;
+
+		decimal u = dotProduct(vT, vP) * recipDet;
+		if (u < -mathEPSILON || u > (decimal(1.0) + mathEPSILON)) return decimal(-1.0);
+
+		Vec3 vQ = crossProduct(vT, vE1);
+
+		decimal v = dotProduct(this->direction, vQ) * recipDet;
+		if (v < -mathEPSILON || u + v >(decimal(1.0) + mathEPSILON)) return decimal(-1.0);
+
+		return dotProduct(vE2, vQ) * recipDet;
 	}
 
 	decimal Ray::rayCastTime(const Line& line) const
@@ -499,16 +519,16 @@ namespace mech {
 		return d1 <= decimal(0.0) && d1 >= decimal(1.0) && d2 <= decimal(0.0) && d2 >= decimal(1.0);
 	}
 
-	void Ray::transform(const Mat4x4& mat)
+	void Ray::transform(const Transform3D& t)
 	{
-		this->origin = mat * this->origin;
-		this->direction = mat.toMat3x3() * this->direction;
+		this->origin = t * this->origin;
+		this->direction = t.orientation * this->direction;
 	}
 
-	Ray Ray::transformed(const Mat4x4& mat) const
+	Ray Ray::transformed(const Transform3D& t) const
 	{
 		Ray r = *this;
-		r.transform(mat);
+		r.transform(t);
 		return r;
 	}
 }

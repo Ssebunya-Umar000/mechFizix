@@ -34,6 +34,7 @@ namespace mech {
 
 	struct ConstraintSolver {
 		
+		ConstraintConfigurations configurations;
 		PhysicsData* physicsData = nullptr;
 
 		ConstraintSolver() {}
@@ -42,47 +43,94 @@ namespace mech {
 
 		void solve(const decimal& deltaTime)
 		{
-			for (byte iteration = 0; iteration < this->physicsData->velocityIterations; ++iteration) {
+			for (byte iteration = 0; iteration < this->configurations.velocityIterations; ++iteration) {
 
 				bool firstIteration = iteration == 0;
-				bool solvePosition = iteration >= (this->physicsData->velocityIterations - this->physicsData->positionIterations);
+				bool solvePosition = iteration >= (this->configurations.velocityIterations - this->configurations.positionIterations);
 
 				//contact constraints
 				for (uint32 x = 0, len = this->physicsData->contactConstraints.size(); x < len; ++x) {
 					if (firstIteration) {
 						this->physicsData->contactConstraints[x].warmStart(physicsData);
 					}
-					bool lastIteration = iteration == this->physicsData->velocityIterations - 1;
-					this->physicsData->contactConstraints[x].solve(physicsData, this->physicsData->baumgarteFactor, solvePosition, lastIteration);
+					bool lastIteration = iteration == this->configurations.velocityIterations - 1;
+					this->physicsData->contactConstraints[x].solve(physicsData, this->configurations.baumgarteFactor, this->configurations.linearSlop, solvePosition, lastIteration);
 				}
 
 				//hinge constraints
 				for (auto it = this->physicsData->hingeConstraints.begin(), end = this->physicsData->hingeConstraints.end(); it != end; ++it) {
+					
 					if (firstIteration) {
+
+						if (it.data().isValid(physicsData) == false) {
+							this->physicsData->hingeConstraints.eraseDataAtIndex(it.index());
+							continue;
+						}
+
 						it.data().warmStart(physicsData);
 					}
-					it.data().solve(physicsData, this->physicsData->baumgarteFactor, solvePosition);
+					it.data().solve(physicsData, this->configurations.baumgarteFactor, solvePosition);
 				}
 
 				//cone constraints
 				for (auto it = this->physicsData->coneConstraints.begin(), end = this->physicsData->coneConstraints.end(); it != end; ++it) {
+
 					if (firstIteration) {
+
+						if (it.data().isValid(physicsData) == false) {
+							this->physicsData->coneConstraints.eraseDataAtIndex(it.index());
+							continue;
+						}
+
 						it.data().warmStart(physicsData);
 					}
-					it.data().solve(physicsData, this->physicsData->baumgarteFactor, solvePosition);
+					it.data().solve(physicsData, this->configurations.baumgarteFactor, solvePosition);
 				}
 
 				//motor constraints
 				for (auto it = this->physicsData->motorConstraints.begin(), end = this->physicsData->motorConstraints.end(); it != end; ++it) {
+
 					if (firstIteration) {
+
+						if (it.data().isValid(physicsData) == false) {
+							this->physicsData->motorConstraints.eraseDataAtIndex(it.index());
+							continue;
+						}
+
 						it.data().warmStart(physicsData);
 					}
-					it.data().solve(physicsData, deltaTime, this->physicsData->baumgarteFactor, solvePosition);
+					it.data().solve(physicsData, deltaTime, this->configurations.baumgarteFactor, solvePosition);
 				}
 			}
+		}
 
-			//clear contacts
-			this->physicsData->contactConstraints.shallowClear();
+		void add(const ContactManifold& manifold)
+		{
+			this->physicsData->contactConstraints.pushBack(ContactConstraint(this->physicsData, manifold, configurations.minVelocityForRestitution));
+		}
+
+		void add(const HingeConstraint::Parameters& parameters)
+		{
+			if (parameters.disableCollisions == true) {
+				this->physicsData->physicsObjects[parameters.object1].diableCollision(this->physicsData, parameters.object2);
+			}
+			this->physicsData->hingeConstraints.insert(HingeConstraint(this->physicsData, parameters));
+		}
+
+		void add(const ConeConstraint::Parameters& parameters)
+		{
+			if (parameters.disableCollisions == true) {
+				this->physicsData->physicsObjects[parameters.object1].diableCollision(this->physicsData, parameters.object2);
+			}
+			this->physicsData->coneConstraints.insert(ConeConstraint(this->physicsData, parameters));
+		}
+
+		void add(const MotorConstraint::Parameters& parameters)
+		{
+			if (parameters.disableCollisions == true) {
+				this->physicsData->physicsObjects[parameters.object1].diableCollision(this->physicsData, parameters.object2);
+			}
+			this->physicsData->motorConstraints.insert(MotorConstraint(this->physicsData, parameters));
 		}
 	};
 }

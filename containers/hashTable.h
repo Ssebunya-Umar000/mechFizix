@@ -33,9 +33,6 @@
 
 namespace mech {
 
-#define TABLE_WEIGHT 10
-#define DEFAULT_TABLE_SIZE 5
-
 	///////////////////////////////////////////////////////////////////////////////////////////////////////////
 	static uint64 hash(const int& number)
 	{
@@ -94,29 +91,31 @@ namespace mech {
 		void prep(const sizeType& tableSize)
 		{
 			this->mTableSize = tableSize;
-			this->mData.reserve(this->mTableSize * TABLE_WEIGHT);
-			for (sizeType x = 0, len = this->mTableSize * TABLE_WEIGHT; x < len; x += TABLE_WEIGHT) {
+			this->mData.reserve(this->mTableSize * this->mTableWeight);
+			for (sizeType x = 0, len = this->mTableSize * this->mTableWeight; x < len; x += this->mTableWeight) {
 				this->mData[x].flags |= 0b00000010;
 			}
 		}
 
 		DynamicArray<Node, sizeType> mData;
 		sizeType mTableSize = 0;
+		sizeType mTableWeight = 20;
 		sizeType mCount = 0;
 
 	public:
 
 		HashTable() {}
 
-		HashTable(const sizeType& tableSize)
+		HashTable(const sizeType& tableSize, const sizeType& tableWeight)
 		{
+			this->mTableWeight = tableWeight;
 			this->prep(tableSize);
 		}
 
 		T* insert(const T& data)
 		{
 			if (this->mTableSize == 0) {
-				this->prep(DEFAULT_TABLE_SIZE);
+				this->prep(5);
 			}
 			else if (this->mCount == this->mData.size() - this->mTableSize) {
 				
@@ -131,7 +130,7 @@ namespace mech {
 				}
 			}
 
-			sizeType index = (hash(data) % this->mTableSize) * TABLE_WEIGHT;
+			sizeType index = (hash(data) % this->mTableSize) * this->mTableWeight;
 			sizeType prevIndex = -1;
 			bool prevSet = false;
 
@@ -156,7 +155,7 @@ namespace mech {
 					++index;
 				}
 				
-				if (index == (this->mTableSize * TABLE_WEIGHT) - 1) {
+				if (index == (this->mTableSize * this->mTableWeight) - 1) {
 					index = 0;
 				}
 
@@ -180,7 +179,7 @@ namespace mech {
 		{
 			if (this->mTableSize == 0) return;
 
-			sizeType index = (hash(data) % this->mTableSize) * TABLE_WEIGHT;
+			sizeType index = (hash(data) % this->mTableSize) * this->mTableWeight;
 			sizeType prevIndex = -1;
 
 			if (this->mData[index].flags & 0b00000001) {
@@ -222,7 +221,7 @@ namespace mech {
 		{
 			if (this->mTableSize == 0) return nullptr;
 
-			sizeType index = (hash(data) % this->mTableSize) * TABLE_WEIGHT;
+			sizeType index = (hash(data) % this->mTableSize) * this->mTableWeight;
 
 			if (this->mData[index].flags & 0b00000001) {
 
@@ -252,7 +251,7 @@ namespace mech {
 		{
 			this->mCount = 0;
 
-			for (sizeType x = 0, len = this->mTableSize * TABLE_WEIGHT; x < len; x += TABLE_WEIGHT) {
+			for (sizeType x = 0, len = this->mTableSize * this->mTableWeight; x < len; x += this->mTableWeight) {
 
 				sizeType index = x;
 				if (this->mData[index].flags & 0b00000001) {
@@ -260,8 +259,10 @@ namespace mech {
 					while (index != (sizeType)(-1)) {
 
 						sizeType temp = this->mData[index].next;
+					
 						this->mData[index].flags &= 0b11111110;
 						this->mData[index].next = -1;
+						
 						index = temp;
 					}
 				}
@@ -283,24 +284,24 @@ namespace mech {
 			{
 				while (this->mTableIndex < this->mTable->mTableSize) {
 
-					if (this->mTable->mData[this->mTableIndex * TABLE_WEIGHT].flags & 0b00000001) {
-						this->mCurrent = &this->mTable->mData[this->mTableIndex * TABLE_WEIGHT];
-						break;
+					if (this->mTable->mData[this->mTableIndex * this->mTable->mTableWeight].flags & 0b00000001) {
+						this->mCurrentIndex = this->mTableIndex * this->mTable->mTableWeight;
+						return;
 					}
 
 					++this->mTableIndex;
 				}
 			}
 
-			Node* mCurrent = nullptr;
-			const HashTable<T, sizeType>* mTable = nullptr;
+			const HashTable<T, sizeType>* mTable;
+			sizeType mCurrentIndex = -1;
 			sizeType mTableIndex = 0;
 
 		public:
 			
-			Iterator() {}
+			Iterator(const HashTable<T, sizeType>* table) : mTable(table) {}
 
-			Iterator(const HashTable<T, sizeType>* table) : mTable(table)
+			Iterator(const HashTable<T, sizeType>* table, const sizeType& index) : mTable(table)
 			{
 				if (this->mTable->empty() == false) {
 					this->moveToNext();
@@ -309,14 +310,10 @@ namespace mech {
 
 			Iterator& operator++()
 			{
-				sizeType next = this->mCurrent->next;
-				if (next == (sizeType)(-1)) {
-					this->mCurrent = nullptr;
+				this->mCurrentIndex = this->mTable->mData[this->mCurrentIndex].next;
+				if (this->mCurrentIndex == (sizeType)(-1)) {
 					++this->mTableIndex;
 					this->moveToNext();
-				}
-				else {
-					this->mCurrent = &this->mTable->mData[next];
 				}
 
 				return *this;
@@ -324,50 +321,50 @@ namespace mech {
 
 			Iterator& operator++(int)
 			{
-				++* this;
+				++*this;
 
 				return *this;
 			}
 
 			T& data()
 			{
-				return this->mCurrent->data;
+				return this->mTable->mData[this->mCurrentIndex].data;
 			}
 
 			T& operator*()
 			{
-				return this->mCurrent->data;
+				return this->mTable->mData[this->mCurrentIndex].data;
 			}
 
 			bool operator==(const Iterator& other)
 			{
-				return this->mCurrent == other.mCurrent;
+				return this->mCurrentIndex == other.mCurrentIndex && this->mTable == other.mTable;
 			}
 
 			bool operator!=(const Iterator& other)
 			{
-				return this->mCurrent != other.mCurrent;
+				return this->mCurrentIndex != other.mCurrentIndex || this->mTable != other.mTable;
 			}
 
 			bool isVoid() const
 			{
-				return this->mCurrent == nullptr;
+				return this->mCurrentIndex == (sizeType)(-1);
 			}
 
 			bool isValid()
 			{
-				return this->mCurrent->flags & 0b00000001;
+				return this->mTable->mData[this->mCurrentIndex].flags & 0b00000001;
 			}
 		};
 
 		Iterator begin() const
 		{
-			return Iterator(this);
+			return Iterator(this, 0);
 		}
 
 		Iterator end() const
 		{
-			return Iterator();
+			return Iterator(this);
 		}
 	};
 }

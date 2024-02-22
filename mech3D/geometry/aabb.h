@@ -44,7 +44,7 @@ namespace mech {
 	struct Ray;
 	struct LineSegment;
 
-	struct Mat4x4;
+	struct Transform3D;
 
 	//axis aligned bounding box
 	struct AABB {
@@ -94,10 +94,12 @@ namespace mech {
 		bool intersects(const Ray& ray) const;
 		bool intersects(const LineSegment& lineSegment) const;
 
-		void transform(const Mat4x4& mat);
-		AABB transformed(const Mat4x4& mat) const;
+		void transform(const Transform3D& t);
+		AABB transformed(const Transform3D& t) const;
 
-		AABB partition8(const byte& partition);
+		AABB partitionTo8(const byte& partition);
+
+		String toString() const { return String("AABB(min:") + this->min.toString() + String(" max:") + this->max.toString() + String(")"); }
 	};
 }
 

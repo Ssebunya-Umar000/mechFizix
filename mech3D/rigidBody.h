@@ -33,8 +33,22 @@
 
 namespace mech {
 
-	struct PhysicsData;
+	class PhysicsData;
 
+	////////////////////////////////////////////////////////////////////////////////////////////////////////
+	struct RigidBodyConfigurations {
+
+		Vec3 gravity = Vec3(decimal(0.0), decimal(-9.8), decimal(0.0));
+		decimal linearDamping = decimal(0.5);
+		decimal angularDamping = decimal(0.5);
+		decimal sleepEpsilon = decimal(0.0001);
+		decimal maxMotion = sleepEpsilon * decimal(10.0);
+		decimal leastMotion = sleepEpsilon * decimal(1.1);
+	};
+
+	RigidBodyConfigurations* getRigidBodyConfigurations();
+
+	////////////////////////////////////////////////////////////////////////////////////////////////////////
 	struct RigidBody {
 
 		/*
@@ -44,7 +58,7 @@ namespace mech {
 		*/
 
 		Transform3D transform;
-		Transform3D prevTransform3D;
+		Transform3D prevTransform;
 		Mat3x3 invInertiaTensor;
 		Vec3 linearVelocity;
 		Vec3 angularVelocity;
@@ -55,26 +69,29 @@ namespace mech {
 		decimal motion = decimal(0.0);
 		decimal invMass = decimal(0.0);
 		uint32 colliderIndex = -1;
-		uint32 islandIndex = -1;
 		ColliderType colliderType = ColliderType::noType;
 		byte flags = 0b00000011;
 
-		RigidBody() {}
+		RigidBody();
 		~RigidBody() {}
 
 		void update(PhysicsData* physicsData, const decimal& deltaTime);
 		void subStep(PhysicsData* physicsData, const decimal& t);
-		void activate(PhysicsData* physicsData);
-		void addForce(PhysicsData* physicsData, const Vec3& force);
-		void addForceAtPoint(PhysicsData* physicsData, const Vec3& force, const Vec3& point);
+		void addForce(const Vec3& force);
+		void addForceAtPoint(const Vec3& force, const Vec3& point);
 		void updatePositionAndOrientaion(const Vec3& deltaPos, const Vec3& deltaOrient);
 		void updateLinearAndAngularVelocity(const Vec3& deltaLinVel, const Vec3& deltaAngVel);
-		void transformCollider(PhysicsData* physicsData, const Mat4x4& mat);
+		void activate();
+		void deactivate();
+		void setMotionToMax();
+		void clearForces();
 
 		bool isActive() { return this->flags & 0b00000010; }
+		bool canSleep() { return this->flags & 0b00000001; }
+	
 		Mat4x4 getTransformMatrix() const { return this->transform.toMatrix(); }
 
-		void setPosition(const Vec3& pos) { this->transform.position = pos; }
+		void setPosition(const Vec3& pos) { this->transform.position = this->prevTransform.position = pos; }
 		void setMass(const decimal& mass) { this->invMass = decimal(1.0) / mass; }
 		void setTensor(const Mat3x3& tensor) { this->invInertiaTensor = getInverse(tensor); }
 	};

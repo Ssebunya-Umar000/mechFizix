@@ -33,17 +33,17 @@
 namespace mech {
 
 	template<typename T1, typename T2>
-	bool SATOverlap(const T1& convexObject1, const T2& convexObject2, const Vec3& axis)
+	bool SATOverlap(const T1& convexShape1, const T2& convexShape2, const Vec3& axis)
 	{
 		if (almostEqual(magnitudeSq(axis), decimal(0.0))) return true;
 
 		Vec3 s1, s2;
-		convexObject1.getSupportPoints(axis, s1, s2);
+		convexShape1.getSupportPoints(axis, s1, s2);
 		decimal min1 = dotProduct(axis, s1);
 		decimal max1 = dotProduct(axis, s2);
 
 		Vec3 s3, s4;
-		convexObject2.getSupportPoints(axis, s3, s4);
+		convexShape2.getSupportPoints(axis, s3, s4);
 		decimal min2 = dotProduct(axis, s3);
 		decimal max2 = dotProduct(axis, s4);
 

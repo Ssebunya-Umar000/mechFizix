@@ -35,7 +35,7 @@
 
 namespace mech {
 
-	struct PhysicsData;
+	class PhysicsData;
 
 	struct Octree  {
 
@@ -51,13 +51,15 @@ namespace mech {
 			Node() {}
 			Node(const AABB& aabb) : bound(aabb), children(Pair<byte, uint16>(-1, -1)) {}
 
-			bool intersects(PhysicsData* physicsData, const ColliderIdentifier& colliderID);
+			//return 0 - no intersection
+			//return 1 - intersection NO containment
+			//return 2 - intersection and containment
+			byte evaluate(PhysicsData* physicsData, const ColliderIdentifier& colliderID);
 		};
 
 		RigidArray<Node, uint16> nodes;
 		uint16 parentNode = 0;
 		byte depth = 0;
-		bool initialised = false;
 
 		Octree() {}
 

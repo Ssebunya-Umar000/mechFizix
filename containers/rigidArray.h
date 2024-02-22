@@ -92,7 +92,7 @@ namespace mech {
 		void eraseData(const T& data)
 		{
 			for (sizeType x = 0, len = this->mData.size(); x < len; ++x) {
-				if (this->mData[x].occupied) {
+				if (this->mData[x].occupied == true) {
 					if (this->mData[x].data == data) {
 						this->eraseDataAtIndex(x);
 					}
@@ -100,15 +100,15 @@ namespace mech {
 			}
 		}
 
-		void eraseDataAtIndex(const sizeType& index)
+		void eraseDataAtIndex(const sizeType index)
 		{
-			assert(this->mData[index].occupied);
+			assert(this->mData[index].occupied == true);
 
-			this->mData[index] = Node();
 			if (index == this->mData.size() - 1) {
 				this->mData.popBack();
 			}
 			else {
+				this->mData[index] = Node();
 				this->mData[index].nextFreeSlot = this->mFreeSlot;
 				this->mFreeSlot = index;
 				++this->mFreeSlotCount;
@@ -124,7 +124,7 @@ namespace mech {
 		T* find(const T& data)
 		{
 			for (sizeType x = 0, len = this->mData.size(); x < len; ++x) {
-				if (this->mData[x].occupied) {
+				if (this->mData[x].occupied == true) {
 					if (this->mData[x].data == data) {
 						return &this->mData[x].data;
 					}
@@ -141,7 +141,7 @@ namespace mech {
 
 		T& operator[](const sizeType& index) const
 		{
-			assert(this->mData[index].occupied);
+			assert(this->mData[index].occupied == true);
 			return this->mData[index].data;
 		}
 
@@ -152,7 +152,7 @@ namespace mech {
 
 		bool empty() const
 		{
-			return this->actualCount() == 0;
+			return this->actualSize() == 0;
 		}
 
 		void wrap()
@@ -160,19 +160,23 @@ namespace mech {
 			this->mData.wrap();
 		}
 
-		sizeType internalCount() const
+		sizeType internalSize() const
 		{
 			return this->mData.size();
 		}
 
-		sizeType actualCount() const
+		sizeType actualSize() const
 		{
 			return this->mData.size() - this->mFreeSlotCount;
 		}
 
 		bool isIndexOccupied(const sizeType& index) const
 		{
-			return (index >= 0 && index < this->mData.size()) && this->mData[index].occupied;
+			if (index >= 0 && index < this->mData.size()) {
+				return this->mData[index].occupied;
+			}
+
+			return false;
 		}
 
 		void shallowClear()
@@ -197,33 +201,32 @@ namespace mech {
 			{
 				sizeType size = this->mArray->mData.size();
 
-				while (this->mIndex < size) {
-					if (this->mArray->mData[this->mIndex].occupied) {
-						this->mCurrent = &this->mArray->mData[this->mIndex];
-						return;
-					}
-					++this->mIndex;
+				while (this->mCurrentIndex < size) {
+					if (this->mArray->mData[this->mCurrentIndex].occupied == true) return;
+					++this->mCurrentIndex;
 				}
 
-				this->mCurrent = nullptr;
+				this->mCurrentIndex = -1;
 			}
 
-			Node* mCurrent = nullptr;
-			const RigidArray<T, sizeType>* mArray = nullptr;
-			sizeType mIndex = 0;
+			const RigidArray<T, sizeType>* mArray;
+			sizeType mCurrentIndex = -1;
 
 		public:
 
-			Iterator() {}
+			Iterator(const RigidArray<T, sizeType>* array) : mArray(array) {}
 
-			Iterator(const RigidArray<T, sizeType>* array) : mArray(array)
+			Iterator(const RigidArray<T, sizeType>* array, const sizeType& index) : mArray(array)
 			{
-				this->moveToNext();
+				if (this->mArray->empty() == false) {
+					this->mCurrentIndex = index;
+					this->moveToNext();
+				}
 			}
 
 			Iterator& operator++()
 			{
-				++this->mIndex;
+				++this->mCurrentIndex;
 				this->moveToNext();
 
 				return *this;
@@ -231,49 +234,49 @@ namespace mech {
 
 			Iterator& operator++(int)
 			{
-				++* this;
+				++*this;
 				return *this;
 			}
 
-			T& data() const
+			T& data()
 			{
-				return this->mCurrent->data;
+				return this->mArray->mData[this->mCurrentIndex].data;
 			}
 
 			T& operator*()
 			{
-				return this->mCurrent->data;
+				return this->mArray->mData[this->mCurrentIndex].data;
 			}
 
 			sizeType index()
 			{
-				return this->mIndex;
+				return this->mCurrentIndex;
 			}
 
-			bool operator==(const Iterator& other) const
+			bool operator==(const Iterator& other)
 			{
-				return this->mCurrent == other.mCurrent;
+				return this->mCurrentIndex == other.mCurrentIndex && this->mArray == other.mArray;
 			}
 
-			bool operator!=(const Iterator& other) const
+			bool operator!=(const Iterator& other)
 			{
-				return !(*this == other);
+				return this->mCurrentIndex != other.mCurrentIndex || this->mArray != other.mArray;
 			}
 
 			bool isVoid() const
 			{
-				return this->mCurrent == nullptr;
+				return this->mCurrentIndex == (sizeType)(-1);
 			}
 		};
 
 		Iterator begin() const
 		{
-			return Iterator(this);
+			return Iterator(this, 0);
 		}
 
 		Iterator end() const
 		{
-			return Iterator();
+			return Iterator(this);
 		}
 	};
 }

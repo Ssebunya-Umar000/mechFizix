@@ -43,8 +43,8 @@ namespace mech {
 		
 		struct Node {
 			T data = T();
-			sizeType min = -1;
-			sizeType max = -1;
+			sizeType prev = -1;
+			sizeType next = -1;
 
 			Node() {}
 			Node(const T& d) : data(d) {}
@@ -75,16 +75,16 @@ namespace mech {
 
 						sizeType index = this->mData.insert(Node(data));
 
-						if (this->mData[currentMin].min == (sizeType)(-1)) {
+						if (this->mData[currentMin].prev == (sizeType)(-1)) {
 							this->mMinimum = index;
 						}
 						else {
-							this->mData[index].min = this->mData[currentMin].min;
-							this->mData[this->mData[currentMin].min].max = index;
+							this->mData[index].prev = this->mData[currentMin].prev;
+							this->mData[this->mData[currentMin].prev].next = index;
 						}
 
-						this->mData[currentMin].min = index;
-						this->mData[index].max = currentMin;
+						this->mData[currentMin].prev = index;
+						this->mData[index].next = currentMin;
 
 						return index;
 					}
@@ -92,16 +92,16 @@ namespace mech {
 
 						sizeType index = this->mData.insert(Node(data));
 
-						if (this->mData[currentMax].max == (sizeType)(-1)) {
+						if (this->mData[currentMax].next == (sizeType)(-1)) {
 							this->mMaximum = index;
 						}
 						else {
-							this->mData[index].max = this->mData[currentMax].max;
-							this->mData[this->mData[currentMax].max].min = index;
+							this->mData[index].next = this->mData[currentMax].next;
+							this->mData[this->mData[currentMax].next].prev = index;
 						}
 
-						this->mData[currentMax].max = index;
-						this->mData[index].min = currentMax;
+						this->mData[currentMax].next = index;
+						this->mData[index].prev = currentMax;
 
 						return index;
 					}
@@ -112,8 +112,8 @@ namespace mech {
 						return currentMax;
 					}
 
-					currentMin = this->mData[currentMin].max;
-					currentMax = this->mData[currentMax].min;
+					currentMin = this->mData[currentMin].next;
+					currentMax = this->mData[currentMax].prev;
 				}
 			}
 
@@ -141,36 +141,36 @@ namespace mech {
 					break;
 				}
 
-				if (this->mData[currentMin].max == currentMax) break;
+				if (this->mData[currentMin].next == currentMax) break;
 
-				currentMin = this->mData[currentMin].max;
-				currentMax = this->mData[currentMax].min;
+				currentMin = this->mData[currentMin].next;
+				currentMax = this->mData[currentMax].prev;
 			}
 		}
 
-		void eraseDataAtIndex(const sizeType& index)
+		void eraseDataAtIndex(const sizeType index)
 		{
 			if (index == this->mMinimum) {
-				this->mMinimum = this->mData[index].max;
+				this->mMinimum = this->mData[index].next;
 				if (this->mMinimum == (sizeType)(-1)) {
 					this->mMaximum = -1;
 				}
 				else {
-					this->mData[this->mMinimum].min = -1;
+					this->mData[this->mMinimum].prev = -1;
 				}
 			}
 			else if (index == this->mMaximum) {
-				this->mMaximum = this->mData[index].min;
+				this->mMaximum = this->mData[index].prev;
 				if (this->mMaximum == (sizeType)(-1)) {
 					this->mMinimum = -1;
 				}
 				else {
-					this->mData[this->mMaximum].max = -1;
+					this->mData[this->mMaximum].next = -1;
 				}
 			}
 			else {
-				this->mData[this->mData[index].max].min = this->mData[index].min;
-				this->mData[this->mData[index].min].max = this->mData[index].max;
+				this->mData[this->mData[index].next].prev = this->mData[index].prev;
+				this->mData[this->mData[index].prev].next = this->mData[index].next;
 			}
 
 			this->mData.eraseDataAtIndex(index);
@@ -191,10 +191,10 @@ namespace mech {
 
 				if (this->mData[currentMax].data == data) return &this->mData[currentMax].data;
 
-				if (this->mData[currentMin].max == currentMax) break;
+				if (this->mData[currentMin].next == currentMax) break;
 
-				currentMin = this->mData[currentMin].max;
-				currentMax = this->mData[currentMax].min;
+				currentMin = this->mData[currentMin].next;
+				currentMax = this->mData[currentMax].prev;
 			}
 
 			return nullptr;
@@ -215,12 +215,12 @@ namespace mech {
 			return this->mData[index].data;
 		}
 
-		sizeType size()
+		sizeType size() const
 		{
-			return this->mData.actualCount();
+			return this->mData.actualSize();
 		}
 
-		bool empty()
+		bool empty() const
 		{
 			return this->mMinimum == (sizeType)(-1);
 		}
@@ -247,43 +247,30 @@ namespace mech {
 		//////////////////////////////////////////////////
 		class Iterator {
 		private:
-			Node* mCurrent = nullptr;
-			const SortedArray<T, sizeType>* mList = nullptr;
-			sizeType mIndex = -1;
+			const SortedArray<T, sizeType>* mArray;
+			sizeType mCurrentIndex = -1;
 
 		public:
 
-			Iterator() {}
+			Iterator(const SortedArray<T, sizeType>* arr) : mArray(arr) {}
 
-			Iterator(const SortedArray<T, sizeType>* list, const sizeType& index) : mList(list), mIndex(index)
+			Iterator(const SortedArray<T, sizeType>* arr, const sizeType& index) : mArray(arr)
 			{
-				if (this->mIndex != (sizeType)(-1)) {
-					this->mCurrent = &this->mList->mData[this->mIndex];
+				if (this->mArray->empty() == false) {
+					this->mCurrentIndex = index;
 				}
 			}
 
 			Iterator& operator++()
 			{
-				this->mIndex = this->mCurrent->max;
-				if (this->mIndex == (sizeType)(-1)) {
-					this->mCurrent = nullptr;
-				}
-				else {
-					this->mCurrent = &this->mList->mData[this->mIndex];
-				}
+				this->mCurrentIndex = this->mArray->mData[this->mCurrentIndex].next;
 
 				return *this;
 			}
 
 			Iterator& operator--()
 			{
-				this->mIndex = this->mCurrent->min;
-				if (this->mIndex == (sizeType)(-1)) {
-					this->mCurrent = nullptr;
-				}
-				else {
-					this->mCurrent = &this->mList->mData[this->mIndex];
-				}
+				this->mCurrentIndex = this->mArray->mData[this->mCurrentIndex].prev;
 
 				return *this;
 			}
@@ -304,32 +291,32 @@ namespace mech {
 
 			T& data()
 			{
-				return this->mCurrent->data;
+				return this->mArray->mData[this->mCurrentIndex].data;
 			}
 
 			T& operator*()
 			{
-				return this->mCurrent->data;
+				return this->mArray->mData[this->mCurrentIndex].data;
 			}
 
 			sizeType index()
 			{
-				return this->mIndex;
+				return this->mCurrentIndex;
 			}
 
 			bool operator==(const Iterator& other)
 			{
-				return this->mCurrent == other.mCurrent;
+				return this->mCurrentIndex == other.mCurrentIndex && this->mArray == other.mArray;
 			}
 
 			bool operator!=(const Iterator& other)
 			{
-				return this->mCurrent != other.mCurrent;
+				return this->mCurrentIndex != other.mCurrentIndex || this->mArray != other.mArray;
 			}
 
 			bool isVoid() const
 			{
-				return this->mCurrent == nullptr;
+				return this->mCurrentIndex == (sizeType)(-1);
 			}
 		};
 
@@ -345,7 +332,7 @@ namespace mech {
 
 		Iterator end() const
 		{
-			return Iterator();
+			return Iterator(this);
 		}
 	};
 }

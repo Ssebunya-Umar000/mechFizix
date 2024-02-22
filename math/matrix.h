@@ -37,8 +37,8 @@ namespace mech {
 	///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 	struct Mat2x2 {
 
-		Array2D<decimal, 2, 2, Alignment::columnMajor> mat;
-		//Array2D<decimal, 2, 2, Alignment::rowMajor> mat;
+		RawMatrix<decimal, 2, 2, Alignment::columnMajor> mat;
+		//RawMatrix<decimal, 2, 2, Alignment::rowMajor> mat;
 
 		Mat2x2() {}
 		explicit Mat2x2(const decimal* m) : mat(m) {}
@@ -73,6 +73,8 @@ namespace mech {
 
 		bool operator==(const Mat2x2& other) const { return this->mat == other.mat; }
 		bool operator!=(const Mat2x2& other) const { return this->mat != other.mat; }
+
+		String toString() const { return String("Mat2x2(") + this->mat.toString() + String(")"); }
 	};
 
 #define nanMAT2X2 Mat2x2(decimalNAN)
@@ -96,8 +98,8 @@ namespace mech {
 	///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 	struct Mat3x3 {
 
-		Array2D<decimal, 3, 3, Alignment::columnMajor> mat;
-		//Array2D<decimal, 3, 3, Alignment::rowMajor> mat;
+		RawMatrix<decimal, 3, 3, Alignment::columnMajor> mat;
+		//RawMatrix<decimal, 3, 3, Alignment::rowMajor> mat;
 
 		Mat3x3() {}
 		explicit Mat3x3(const decimal* m) : mat(m) {}
@@ -132,6 +134,8 @@ namespace mech {
 
 		bool operator==(const Mat3x3& other) const { return this->mat == other.mat; }
 		bool operator!=(const Mat3x3& other) const { return this->mat != other.mat; }
+
+		String toString() const { return String("Mat3x3(") + this->mat.toString() + String(")"); }
 	};
 
 #define nanMAT3X3 Mat3x3(decimalNAN)
@@ -174,8 +178,8 @@ namespace mech {
 	///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 	struct Mat4x4 {
 
-		Array2D<decimal, 4, 4, Alignment::columnMajor> mat;
-		//Array2D<decimal, 4, 4, Alignment::rowMajor> mat;
+		RawMatrix<decimal, 4, 4, Alignment::columnMajor> mat;
+		//RawMatrix<decimal, 4, 4, Alignment::rowMajor> mat;
 
 		Mat4x4() {}
 		explicit Mat4x4(const decimal* m) : mat(m) {}
@@ -221,6 +225,8 @@ namespace mech {
 			mat.setColumn(2, this->getColumn(2).toVec3());
 			return mat;
 		}
+
+		String toString() const { return String("Mat4x4(") + this->mat.toString() + String(")"); }
 	};
 
 #define nanMAT4X4 Mat4x4(decimalNAN)
@@ -325,21 +331,21 @@ namespace mech {
 		decimal s = mathSIN(degreesToRadians(angle));
 		decimal d = decimal(1.0) - c;
 
-		Vec3 vec = normalise(axis);
+		Vec3 a = normalise(axis);
 
 		Mat4x4 result(decimal(1.0));
 
-		result.rowXcol(0, 0) = vec.x * vec.x * d + c;
-		result.rowXcol(1, 0) = vec.x * vec.y * d + vec.z * s;
-		result.rowXcol(2, 0) = vec.x * vec.z * d - vec.y * s;
+		result.rowXcol(0, 0) = a.x * a.x * d + c;
+		result.rowXcol(1, 0) = a.x * a.y * d + a.z * s;
+		result.rowXcol(2, 0) = a.x * a.z * d - a.y * s;
 
-		result.rowXcol(0, 1) = vec.x * vec.y * d - vec.z * s;
-		result.rowXcol(1, 1) = vec.y * vec.y * d + c;
-		result.rowXcol(2, 1) = vec.y * vec.z * d + vec.x * s;
+		result.rowXcol(0, 1) = a.x * a.y * d - a.z * s;
+		result.rowXcol(1, 1) = a.y * a.y * d + c;
+		result.rowXcol(2, 1) = a.y * a.z * d + a.x * s;
 
-		result.rowXcol(0, 2) = vec.x * vec.z * d + vec.y * s;
-		result.rowXcol(1, 2) = vec.y * vec.z * d - vec.x * s;
-		result.rowXcol(2, 2) = vec.z * vec.z * d + c;
+		result.rowXcol(0, 2) = a.x * a.z * d + a.y * s;
+		result.rowXcol(1, 2) = a.y * a.z * d - a.x * s;
+		result.rowXcol(2, 2) = a.z * a.z * d + c;
 
 		return result;
 	}
@@ -351,7 +357,7 @@ namespace mech {
 
 	inline static Mat4x4 rotationMatrix(const Vec3& angle)
 	{
-		return rotationMatrix(angle.x, XAXIS)* rotationMatrix(angle.y, YAXIS)* rotationMatrix(angle.z, ZAXIS);
+		return rotationMatrix(angle.x, XAXIS) * rotationMatrix(angle.y, YAXIS) * rotationMatrix(angle.z, ZAXIS);
 	}
 
 	inline static Mat4x4 scaleMatrix(const Vec3& s)

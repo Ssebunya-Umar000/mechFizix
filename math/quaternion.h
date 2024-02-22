@@ -31,7 +31,7 @@
 #include"matrix.h"
 
 namespace mech {
-	
+
 	struct Quaternion
 	{
 		union {
@@ -42,15 +42,15 @@ namespace mech {
 				decimal s;
 				Vec3 vec;
 			};
-			Array2D<decimal, 4, 1, Alignment::columnMajor> mat;
-			//Array2D<decimal, 1, 4, Alignment::rowMajor> mat;
+			RawMatrix<decimal, 4, 1, Alignment::columnMajor> mat;
+			//RawMatrix<decimal, 1, 4, Alignment::rowMajor> mat;
 		};
 
 		Quaternion() : s(decimal(0.0)), x(decimal(0.0)), y(decimal(0.0)), z(decimal(0.0)) {}
 		explicit Quaternion(const decimal& s, const decimal& x, const decimal& y, const decimal& z) : s(s), x(x), y(y), z(z) {}
 		explicit Quaternion(const decimal& s, const Vec3& vec) : s(s), x(vec.x), y(vec.y), z(vec.z) {}
 		explicit Quaternion(const decimal* m) : mat(m) {}
-		~Quaternion(){}
+		~Quaternion() {}
 
 		Quaternion operator+(const Quaternion& other) const { return Quaternion((this->mat + other.mat).data); }
 		Quaternion operator-(const Quaternion& other) const { return Quaternion((this->mat - other.mat).data); }
@@ -71,6 +71,8 @@ namespace mech {
 
 		bool operator==(const Quaternion& other) const { return this->mat == other.mat; }
 		bool operator!=(const Quaternion& other) const { return this->mat != other.mat; }
+
+		String toString() const { return String("Quaternion(") + this->mat.toString() + String(")"); }
 	};
 
 #define nanQUATERNION Quaternion(decimalNAN, nanVEC3)
@@ -83,7 +85,7 @@ namespace mech {
 
 	inline static decimal magnitudeSq(const Quaternion& q)
 	{
-		return q.s * q.s + magnitudeSq(q.vec);
+		return q.s* q.s + magnitudeSq(q.vec);
 	}
 
 	inline static decimal magnitude(const Quaternion& q)
@@ -110,6 +112,18 @@ namespace mech {
 		return Quaternion(q.s / mag, q.vec / mag);
 	}
 
+	inline static Quaternion quaternionFromAxisAngleDeg(const Vec3& axis, const decimal& angle)
+	{
+		decimal a = degreesToRadians(angle) * decimal(0.5);
+		return Quaternion(mathCOS(a), normalise(axis) * mathSIN(a));
+	}
+
+	inline static Quaternion quaternionFromAxisAngleRad(const Vec3& axis, const decimal& angle)
+	{
+		decimal a = angle * decimal(0.5);
+		return Quaternion(mathCOS(a), normalise(axis) * mathSIN(a));
+	}
+
 	inline static Quaternion quaternionFromMatrix(const Mat3x3& matrix)
 	{
 		Quaternion q;
@@ -120,7 +134,7 @@ namespace mech {
 
 			decimal s = mathSQRT(trace + decimal(1.0));
 			decimal temp = decimal(0.5) / s;
-			
+
 			q.s = decimal(0.5) * s;
 			q.x = (matrix.rowXcol(2, 1) - matrix.rowXcol(1, 2)) / (decimal(4.0) * temp);
 			q.y = (matrix.rowXcol(0, 2) - matrix.rowXcol(2, 0)) / (decimal(4.0) * temp);
@@ -133,27 +147,27 @@ namespace mech {
 			if (matrix.rowXcol(2, 2) > matrix.rowXcol(i, i)) i = 2;
 
 			if (i == 0) {
-				decimal s = sqrt(matrix.rowXcol(0, 0) - (matrix.rowXcol(1, 1) + matrix.rowXcol(2, 2)) + decimal(1.0));
+				decimal s = mathSQRT(matrix.rowXcol(0, 0) - (matrix.rowXcol(1, 1) + matrix.rowXcol(2, 2)) + decimal(1.0));
 				decimal temp = decimal(0.5) / s;
-				
+
 				q.s = matrix.rowXcol(2, 1) - matrix.rowXcol(1, 2) * temp;
 				q.x = decimal(0.5) * s;
 				q.y = matrix.rowXcol(0, 1) + matrix.rowXcol(1, 0) * temp;
 				q.z = matrix.rowXcol(2, 0) + matrix.rowXcol(0, 2) * temp;
 			}
 			else if (i == 1) {
-				decimal s = sqrt(matrix.rowXcol(1, 1) - (matrix.rowXcol(2, 2) + matrix.rowXcol(0, 0)) + decimal(1.0));
+				decimal s = mathSQRT(matrix.rowXcol(1, 1) - (matrix.rowXcol(2, 2) + matrix.rowXcol(0, 0)) + decimal(1.0));
 				decimal temp = decimal(0.5) / s;
-				
+
 				q.s = matrix.rowXcol(0, 2) - matrix.rowXcol(2, 0) * temp;
 				q.x = matrix.rowXcol(0, 1) + matrix.rowXcol(1, 0) * temp;
 				q.y = decimal(0.5) * s;
 				q.z = matrix.rowXcol(1, 2) + matrix.rowXcol(2, 1) * temp;
 			}
 			else {
-				decimal s = sqrt(matrix.rowXcol(2, 2) - (matrix.rowXcol(0, 0) + matrix.rowXcol(1, 1)) + decimal(1.0));
+				decimal s = mathSQRT(matrix.rowXcol(2, 2) - (matrix.rowXcol(0, 0) + matrix.rowXcol(1, 1)) + decimal(1.0));
 				decimal temp = decimal(0.5) / s;
-				
+
 				q.s = matrix.rowXcol(1, 0) - matrix.rowXcol(0, 1) * temp;
 				q.x = matrix.rowXcol(2, 0) - matrix.rowXcol(0, 2) * temp;
 				q.y = matrix.rowXcol(1, 2) - matrix.rowXcol(2, 1) * temp;
@@ -188,7 +202,7 @@ namespace mech {
 
 		mat.rowXcol(0, 2) = decimal(2.0) * (xz + sy);
 		mat.rowXcol(1, 2) = decimal(2.0) * (yz - sx);
-		mat.rowXcol(2, 2) = decimal(1.0) - decimal(2.0) * (xx +  yy);
+		mat.rowXcol(2, 2) = decimal(1.0) - decimal(2.0) * (xx + yy);
 
 		return mat;
 	}
@@ -199,7 +213,7 @@ namespace mech {
 
 		Vec3	angles;
 		if (mathABS(num) > decimal(0.999999)) {
-		
+
 			angles.x = radiansToDegrees(decimal(0.0));
 			angles.y = radiansToDegrees(-(mathPI / decimal(2.0)) * num / mathABS(num));
 			angles.z = radiansToDegrees(mathATAN2(-(decimal(2.0) * (q.x * q.y - q.s * q.z)), -num * decimal(2.0) * (q.x * q.z + q.s * q.y)));
@@ -219,7 +233,7 @@ namespace mech {
 	}
 
 	inline static decimal getRotationAngle(const Quaternion& q, const Vec3& axis)
-	{ 
+	{
 		return q.s == decimal(0.0) ? mathPI : decimal(2.0) * mathATAN(dotProduct(axis, q.vec) / q.s);
 	}
 

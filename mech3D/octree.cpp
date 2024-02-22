@@ -39,8 +39,6 @@ namespace mech {
 			if (physicsData->physicsObjects[colliderID.objectIndex].nodesIntersected.find(nodeIndex) == false) {
 				physicsData->physicsObjects[colliderID.objectIndex].nodesIntersected.pushBack(nodeIndex);
 			}
-
-			physicsData->activeOctreeNodes.insert(nodeIndex);
 		}
 		else {
 			octree->nodes[nodeIndex].staticColliders.pushBack(Pair<uint32, ColliderIdentifier>(colliderID.ID, colliderID));
@@ -49,7 +47,7 @@ namespace mech {
 
 	void heightFieldTest(PhysicsData* physicsData, Octree* octree, const uint16& nodeIndex)
 	{
-		if (octree->nodes[nodeIndex].intersects(physicsData, physicsData->heightFieldCollider.identifier)) {
+		if (octree->nodes[nodeIndex].evaluate(physicsData, physicsData->heightFieldCollider.identifier)) {
 			octree->nodes[nodeIndex].staticColliders.pushBack(Pair<uint32, ColliderIdentifier>(physicsData->heightFieldCollider.identifier.ID, physicsData->heightFieldCollider.identifier));
 		}
 	}
@@ -60,7 +58,8 @@ namespace mech {
 		octree->nodes[childIndex].key = key;
 		octree->nodes[childIndex].parent = parentIndex;
 
-		octree->nodes[parentIndex].children.pushBack(Pair<byte, uint16>(key, childIndex));
+		octree->nodes[parentIndex].children[key] = Pair<byte, uint16>(key, childIndex);
+		++octree->nodes[parentIndex].children.size();
 
 		return childIndex;
 	}
@@ -69,26 +68,24 @@ namespace mech {
 	///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 	///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 	///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-	bool Octree::Node::intersects(PhysicsData* physicsData, const ColliderIdentifier& colliderID)
+	byte Octree::Node::evaluate(PhysicsData* physicsData, const ColliderIdentifier& colliderID)
 	{
-		if (colliderID.type == ColliderType::convexHull) {
-			return this->bound.intersects(physicsData->convexHullColliders[colliderID.colliderIndex].bound);
-		}
-		else if (colliderID.type == ColliderType::capsule) {
-			return this->bound.intersects(physicsData->capsuleColliders[colliderID.colliderIndex].bound);
-		}
-		else if (colliderID.type == ColliderType::sphere) {
-			return this->bound.intersects(physicsData->sphereColliders[colliderID.colliderIndex].bound);
-		}
-		else if (colliderID.type == ColliderType::triangleMesh) {
-			return this->bound.intersects(physicsData->triangleMeshColliders[colliderID.colliderIndex].bound);
-		}
-		else if (colliderID.type == ColliderType::heightField) {
+		if (colliderID.type == ColliderType::heightField) {
 			const decimal& h = physicsData->heightFieldCollider.collider.maxHeight;
 			return (this->bound.min.y <= h && this->bound.min.y >= -h) || (this->bound.max.y <= h && this->bound.max.y >= -h);
 		}
+		else {
+			
+			const AABB& bound = physicsData->getColliderAABB(colliderID);
+			if (this->bound.intersects(bound)) {
+				if (this->bound.contains(bound)) {
+					return 2;
+				}
+				return 1;
+			}
+		}
 
-		return false;
+		return 0;
 	}
 
 
@@ -99,7 +96,6 @@ namespace mech {
 	{
 		this->nodes.insert(Node(bounds));
 		this->depth = inDepth;
-		this->initialised = true;
 	}
 
 	void Octree::add(PhysicsData* physicsData, const ColliderIdentifier& colliderID)
@@ -109,53 +105,59 @@ namespace mech {
 
 			Helper(Octree* o) : octree(o) {}
 
-			void processNode(PhysicsData* physicsData, const uint16& parentIndex, const ColliderIdentifier& colliderID, byte key, byte depth)
-			{
-				Pair<byte, uint16>* pair = this->octree->nodes[parentIndex].children.find(key);
-				if (pair == nullptr) {
-
-					AABB aabb = this->octree->nodes[parentIndex].bound.partition8(key);
-					if (Octree::Node(aabb).intersects(physicsData, colliderID)) {
-
-						uint16 childIndex = insertChild(this->octree, parentIndex, aabb, key);
-
-						if (depth == 0) {
-							insertObject(physicsData, this->octree, childIndex, colliderID);
-							heightFieldTest(physicsData, this->octree, childIndex);
-						}
-						else {
-							addCollider(physicsData, childIndex, colliderID, depth);
-						}
-					}
-				}
-				else {
-					uint16 childIndex = pair->second;
-
-					if (this->octree->nodes[childIndex].intersects(physicsData, colliderID)) {
-
-						if (depth == 0) {
-							insertObject(physicsData, this->octree, childIndex, colliderID);
-						}
-						else {
-							addCollider(physicsData, childIndex, colliderID, depth);
-						}
-					}
-				}
-			}
-
 			void addCollider(PhysicsData* physicsData, const uint16& nodeIndex, const ColliderIdentifier& colliderID, byte depth)
 			{
 				--depth;
+
 				for (byte x = 0; x < 8; ++x) {
-					processNode(physicsData, nodeIndex, colliderID, x, depth);
+					
+					if (isAValidIndex(this->octree->nodes[nodeIndex].children[x].first)) {
+
+						uint16 childIndex = this->octree->nodes[nodeIndex].children[x].second;
+
+						byte b = this->octree->nodes[childIndex].evaluate(physicsData, colliderID);
+						if (b != 0) {
+
+							if (depth == 0) {
+								insertObject(physicsData, this->octree, childIndex, colliderID);
+							}
+							else {
+								addCollider(physicsData, childIndex, colliderID, depth);
+							}
+						}
+
+						if (b == 2) break;
+					}
+					else {
+						AABB aabb = this->octree->nodes[nodeIndex].bound.partitionTo8(x);
+
+						byte b = Node(aabb).evaluate(physicsData, colliderID);
+						if (b != 0) {
+
+							uint16 childIndex = insertChild(this->octree, nodeIndex, aabb, x);
+
+							if (depth == 0) {
+								insertObject(physicsData, this->octree, childIndex, colliderID);
+								heightFieldTest(physicsData, this->octree, childIndex);
+							}
+							else {
+								addCollider(physicsData, childIndex, colliderID, depth);
+							}
+						}
+
+						if (b == 2) break;
+					}
 				}
 			}
 		};
 
-		assert(this->initialised);
+		assert(this->nodes.empty() == false);
 
 		Helper helper(this);
-		helper.addCollider(physicsData, this->parentNode, colliderID, this->depth);
+
+		if (this->nodes[this->parentNode].evaluate(physicsData, colliderID) != 0) {
+			helper.addCollider(physicsData, this->parentNode, colliderID, this->depth);
+		}
 	}
 
 	void Octree::repositionCollider(PhysicsData* physicsData, const ColliderIdentifier& colliderID)
@@ -251,9 +253,9 @@ namespace mech {
 				return AABB();
 			}
 
-			DynamicArray<byte, byte> getValidNodes(const uint16& nodeIndex, const Vec3& dimensions, const AABB& aabb)
+			StackArray<byte, 8> getValidNodes(const uint16& nodeIndex, const Vec3& dimensions, const AABB& aabb)
 			{
-				DynamicArray<byte, byte> valid;
+				StackArray<byte, 8> valid;
 
 				if (neighbourBound(nodeIndex, 12, dimensions).intersects(aabb)) {
 					valid.pushBack(12);
@@ -484,32 +486,29 @@ namespace mech {
 			{
 				uint16 childIndex = -1;
 
-				AABB box = this->octree->nodes[nodeIndex].bound.partition8(key1);
+				AABB box = this->octree->nodes[nodeIndex].bound.partitionTo8(key1);
 				if (specialContains(box, otherCenter)) {
 
-					Pair<byte, uint16>* ptr = this->octree->nodes[nodeIndex].children.find(key1);
-
-					if (ptr == nullptr) {
+					if (isAValidIndex(this->octree->nodes[nodeIndex].children[key1].first)) {
+						childIndex = this->octree->nodes[nodeIndex].children[key1].second;
+					}
+					else {
 						childIndex = insertChild(this->octree, nodeIndex, box, key1);
 						if (depth == 0) {
 							heightFieldTest(physicsData, this->octree, childIndex);
 						}
 					}
-					else {
-						childIndex = ptr->second;
-					}
 				}
 				else {
-					Pair<byte, uint16>* ptr = this->octree->nodes[nodeIndex].children.find(key2);
 
-					if (ptr == nullptr) {
-						childIndex = insertChild(this->octree, nodeIndex, this->octree->nodes[nodeIndex].bound.partition8(key2), key2);
+					if (isAValidIndex(this->octree->nodes[nodeIndex].children[key2].first)) {
+						childIndex = this->octree->nodes[nodeIndex].children[key2].second;
+					}
+					else {
+						childIndex = insertChild(this->octree, nodeIndex, this->octree->nodes[nodeIndex].bound.partitionTo8(key2), key2);
 						if (depth == 0) {
 							heightFieldTest(physicsData, this->octree, childIndex);
 						}
-					}
-					else {
-						childIndex = ptr->second;
 					}
 				}
 
@@ -549,23 +548,15 @@ namespace mech {
 			}
 		};
 
+		uint16 nodeIndex = physicsData->physicsObjects[colliderID.objectIndex].nodesIntersected[0];
+
+		if (this->nodes[nodeIndex].evaluate(physicsData, colliderID) == 2) return;
+
 		Helper helper(this);
 
-		uint16 nodeIndex = physicsData->physicsObjects[colliderID.objectIndex].nodesIntersected[0];
 		Vec3 dimensions = this->nodes[nodeIndex].bound.getDimensions();
 
-		const AABB* aabb = &AABB(nanVEC3, nanVEC3);
-		if (colliderID.type == ColliderType::convexHull) {
-			aabb = &physicsData->convexHullColliders[colliderID.colliderIndex].bound;
-		}
-		else if (colliderID.type == ColliderType::capsule) {
-			aabb = &physicsData->capsuleColliders[colliderID.colliderIndex].bound;
-		}
-		else if (colliderID.type == ColliderType::sphere) {
-			aabb = &physicsData->sphereColliders[colliderID.colliderIndex].bound;
-		}
-	
-		DynamicArray<byte, byte> valid = helper.getValidNodes(nodeIndex, dimensions, *aabb);
+		StackArray<byte, 8> valid = helper.getValidNodes(nodeIndex, dimensions, physicsData->getColliderAABB(colliderID));
 
 		for (byte x = 0, len = valid.size(); x < len; ++x) {
 			Vec3 nodeCenter = helper.neighbourBound(nodeIndex, valid[x], dimensions).getCenter();
@@ -580,7 +571,9 @@ namespace mech {
 		uint16 parentIndex = this->nodes[index].parent;
 		if (isAValidIndex(parentIndex)) {
 
-			this->nodes[parentIndex].children.eraseData(this->nodes[index].key);
+			this->nodes[parentIndex].children[this->nodes[index].key] = Pair<byte, uint16>(-1, -1);
+			--this->nodes[parentIndex].children.size();
+
 			this->nodes.eraseDataAtIndex(index);
 
 			if (this->nodes[parentIndex].children.empty()) {

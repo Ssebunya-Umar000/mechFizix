@@ -44,7 +44,7 @@ namespace mech {
 	struct Ray;
 	struct LineSegment;
 
-	struct Mat4x4;
+	struct Transform3D;
 
 	struct Sphere {
 		Vec3 center;
@@ -83,8 +83,10 @@ namespace mech {
 		bool intersects(const Ray& ray) const;
 		bool intersects(const LineSegment& lineSegment) const;
 
-		void transform(const Mat4x4& mat);
-		Sphere transformed(const Mat4x4& mat) const;
+		void transform(const Transform3D& t);
+		Sphere transformed(const Transform3D& t) const;
+
+		String toString() const { return String("Sphere(center:") + this->center.toString() + String(" radius:") + toString2(this->radius) + String(")"); }
 	};
 }
 

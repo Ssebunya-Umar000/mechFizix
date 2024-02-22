@@ -118,7 +118,7 @@ namespace mech {
 			}
 		}
 
-		void eraseDataAtIndex(const sizeType& index)
+		void eraseDataAtIndex(const sizeType index)
 		{
 			if (index == this->mFront) {
 				this->pop();
@@ -169,7 +169,7 @@ namespace mech {
 
 		sizeType size() const
 		{
-			return this->mData.actualCount();
+			return this->mData.actualSize();
 		}
 
 		bool empty() const
@@ -199,31 +199,23 @@ namespace mech {
 		//////////////////////////////////////////////////
 		class Iterator {
 		private:
-			Node* mCurrent = nullptr;
-			const Queue<T, sizeType>* mQueue = nullptr;
-			sizeType mIndex = -1;
+			const Queue<T, sizeType>* mQueue;
+			sizeType mCurrentIndex = -1;
 
 		public:
 
-			Iterator() {}
+			Iterator(const Queue<T, sizeType>* queue) : mQueue(queue) {}
 
-			Iterator(const Queue<T, sizeType>* queue) : mQueue(queue)
+			Iterator(const Queue<T, sizeType>* queue, const sizeType& index) : mQueue(queue)
 			{
 				if (this->mQueue->empty() == false) {
-					this->mIndex = this->mQueue->mFront;
-					this->mCurrent = &this->mQueue->mData[this->mIndex];
+					this->mCurrentIndex = index;
 				}
 			}
 
 			Iterator& operator++()
 			{
-				this->mIndex = this->mCurrent->next;
-				if (this->mIndex == (sizeType)(-1)) {
-					this->mCurrent = nullptr;
-				}
-				else {
-					this->mCurrent = &this->mQueue->mData[this->mIndex];
-				}
+				this->mCurrentIndex = this->mQueue->mData[this->mCurrentIndex].next;
 
 				return *this;
 			}
@@ -237,43 +229,43 @@ namespace mech {
 
 			T& data()
 			{
-				return this->mCurrent->data;
+				return this->mQueue->mData[this->mCurrentIndex].data;
 			}
 
 			T& operator*()
 			{
-				return this->mCurrent->data;
+				return this->mQueue->mData[this->mCurrentIndex].data;
 			}
 
 			sizeType index()
 			{
-				return this->mIndex;
+				return this->mCurrentIndex;
 			}
 
 			bool operator==(const Iterator& other)
 			{
-				return this->mCurrent == other.mCurrent;
+				return this->mCurrentIndex == other.mCurrentIndex && this->mQueue == other.mQueue;
 			}
 
 			bool operator!=(const Iterator& other)
 			{
-				return this->mCurrent != other.mCurrent;
+				return this->mCurrentIndex != other.mCurrentIndex || this->mQueue != other.mQueue;
 			}
 
 			bool isVoid() const
 			{
-				return this->mCurrent == nullptr;
+				return this->mCurrentIndex == (sizeType)(-1);
 			}
 		};
 
 		Iterator begin() const
 		{
-			return Iterator(this);
+			return Iterator(this, this->mFront);
 		}
 
 		Iterator end() const
 		{
-			return Iterator();
+			return Iterator(this);
 		}
 	};
 }

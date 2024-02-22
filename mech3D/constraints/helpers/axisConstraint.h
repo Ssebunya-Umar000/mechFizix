@@ -84,7 +84,7 @@ namespace mech {
 
 			Vec3 linearImpulse = axis * lambda;
 			for (uint32 x = 0; x < 2; ++x) if (bodies[x]) {
-				int sign = x == 0 ? -1 : 1;
+				decimal sign = x == 0 ? decimal(-1.0) : decimal(1.0);
 				bodies[x]->updateLinearAndAngularVelocity(linearImpulse * invM[x] * sign, this->ixrCrossA[x] * lambda * sign);
 			}
 		}
@@ -95,7 +95,7 @@ namespace mech {
 
 			Vec3 linearImpulse = axis * lambda;
 			for (uint32 x = 0; x < 2; ++x) if (bodies[x]) {
-				int sign = x == 0 ? -1 : 1;
+				decimal sign = x == 0 ? decimal(-1.0) : decimal(1.0);
 				bodies[x]->updatePositionAndOrientaion(linearImpulse * invM[x] * sign, this->ixrCrossA[x] * lambda * sign);
 			}
 		}

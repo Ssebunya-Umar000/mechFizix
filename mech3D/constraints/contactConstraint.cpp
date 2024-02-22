@@ -31,47 +31,52 @@
 
 namespace mech {
 
-	ContactConstraint::ContactConstraint(PhysicsData* physicsData, const ContactManifold& manifold)
+	ContactConstraint::ContactConstraint(PhysicsData* physicsData, const ContactManifold& manifold, const decimal& minVelocityForRestitution)
 	{
-		this->bodies[0] = &physicsData->physicsObjects[manifold.colliderID1.objectIndex].rigidBody;
-		this->bodies[1] = isAValidIndex(manifold.colliderID2.objectIndex) ? &physicsData->physicsObjects[manifold.colliderID2.objectIndex].rigidBody : nullptr;
-
+		this->objectIndex[0] = manifold.colliderID1.objectIndex;
+		this->objectIndex[1] = manifold.colliderID2.objectIndex;
 		this->impulseCacheID = manifold.ID;
 
-		this->frictionCoefficient = manifold.properties1.frictionSqrt * manifold.properties2.frictionSqrt;
-		decimal coeficientOfRestitution = manifold.properties2.restitution > manifold.properties1.restitution ? manifold.properties1.restitution : manifold.properties2.restitution;
+		this->frictionCoefficient = manifold.material1.frictionSqrt * manifold.material2.frictionSqrt;
+		decimal coeficientOfRestitution = manifold.material2.restitution > manifold.material1.restitution ? manifold.material1.restitution : manifold.material2.restitution;
 
 		this->contactPointCount = manifold.numPoints;
 
-		for (uint32 x = 0; x < this->contactPointCount; ++x) {
+		StackArray<RigidBody*, 2> bodies;
+		StackArray<decimal, 2> invMass;
+		StackArray<Mat3x3, 2> invI;
+		for (byte y = 0; y < 2; ++y) if (isAValidIndex(this->objectIndex[y])) {
+			bodies[y] = &physicsData->physicsObjects[this->objectIndex[y]].rigidBody;
+			invMass[y] = bodies[y]->invMass;
+			invI[y] = bodies[y]->invInertiaTensor;
+		}
+
+		for (byte x = 0; x < this->contactPointCount; ++x) {
 
 			this->contactData[x].ID = manifold.contactPoints[x].ID;
 
-			StackArray<decimal, 2> invMass;
 			StackArray<Vec3, 2> r;
-			StackArray<Mat3x3, 2> invI;
 			Vec3 deltaVelocity;
-			for (uint32 y = 0; y < 2; ++y) if (this->bodies[y]) {
+			for (byte y = 0; y < 2; ++y) if (isAValidIndex(this->objectIndex[y])) {
 
-				invMass[y] = this->bodies[y]->invMass;
-				r[y] = manifold.contactPoints[x].position[y] - this->bodies[y]->transform.position;
-				invI[y] = this->bodies[y]->invInertiaTensor;
+				r[y] = manifold.contactPoints[x].position[y] - bodies[y]->transform.position;
 
-				deltaVelocity += this->bodies[y]->linearVelocity + crossProduct(this->bodies[y]->angularVelocity, r[y]) * (y == 0 ? -1 : 1);
+				decimal sign = y == 0 ? decimal(-1.0) : decimal(1.0);
+				deltaVelocity += bodies[y]->linearVelocity + crossProduct(bodies[y]->angularVelocity, r[y]) * sign;
 			}
 
 			this->contactData[x].normal = manifold.contactPoints[x].normal;
-			this->contactData[x].tangent1 = getPerpendicularVector(manifold.contactPoints[x].normal);
+			this->contactData[x].tangent1 = getPerpendicularVectorNormalised(manifold.contactPoints[x].normal);
 			this->contactData[x].tangent2 = crossProduct(manifold.contactPoints[x].normal, this->contactData[x].tangent1);
 
 			this->contactData[x].penetration = dotProduct(this->contactData[x].normal, manifold.contactPoints[x].position[1] - manifold.contactPoints[x].position[0]);
 
 			decimal normalVelocity = mathABS(dotProduct(this->contactData[x].normal, deltaVelocity));
-			decimal penetrationBias = coeficientOfRestitution * (normalVelocity > physicsData->minVelocityForRestitution ? normalVelocity : decimal(0.0));
+			decimal penetrationBias = coeficientOfRestitution * (normalVelocity > minVelocityForRestitution ? normalVelocity : decimal(0.0));
 
-			this->contactData[x].penetrationConstraint.initialise(this->contactData[x].normal, this->bodies, r, invI, invMass, penetrationBias);
-			this->contactData[x].frictionConstraint1.initialise(this->contactData[x].tangent1, this->bodies, r, invI, invMass, decimal(0.0));
-			this->contactData[x].frictionConstraint2.initialise(this->contactData[x].tangent2, this->bodies, r, invI, invMass, decimal(0.0));
+			this->contactData[x].penetrationConstraint.initialise(this->contactData[x].normal, bodies, r, invI, invMass, penetrationBias);
+			this->contactData[x].frictionConstraint1.initialise(this->contactData[x].tangent1, bodies, r, invI, invMass, decimal(0.0));
+			this->contactData[x].frictionConstraint2.initialise(this->contactData[x].tangent2, bodies, r, invI, invMass, decimal(0.0));
 		}
 	}
 
@@ -81,19 +86,21 @@ namespace mech {
 	
 		if (impulseCache.retention != 0) {
 
+			StackArray<RigidBody*, 2> bodies;
 			StackArray<Vec3, 2> deltaLinVel;
 			StackArray<Vec3, 2> deltaAngVel;
+			StackArray<decimal, 2> invMass;
 
-			for (uint32 x = 0, len = impulseCache.impulses.size(); x < len; ++x) {
+			for (byte y = 0; y < 2; ++y) if (isAValidIndex(this->objectIndex[y])) {
+				bodies[y] = &physicsData->physicsObjects[this->objectIndex[y]].rigidBody;
+				invMass[y] = bodies[y]->invMass;
+			}
+
+			for (byte x = 0, len = impulseCache.impulses.size(); x < len; ++x) {
 
 				Pair<uint32, ImpulseCache::Impulse>* impPtr = impulseCache.impulses.find(this->contactData[x].ID);
 
 				if (impPtr) {
-
-					StackArray<decimal, 2> invMass;
-					for (uint32 y = 0; y < 2; ++y) if (this->bodies[y]) {
-						invMass[y] = this->bodies[y]->invMass;
-					}
 
 					//friction1
 					this->contactData[x].frictionConstraint1.totalLambda = dotProduct(this->contactData[x].tangent1, impPtr->second.frictionImpulse1);
@@ -109,38 +116,40 @@ namespace mech {
 				}
 			}
 
-			for (uint32 y = 0; y < 2; ++y) if (this->bodies[y]) {
-				this->bodies[y]->updateLinearAndAngularVelocity(deltaLinVel[y], deltaAngVel[y]);
+			for (byte y = 0; y < 2; ++y) if (bodies[y]) {
+				bodies[y]->updateLinearAndAngularVelocity(deltaLinVel[y], deltaAngVel[y]);
 			}
 		}
 
 		impulseCache.impulses.clear();
 	}
 
-	void ContactConstraint::solve(PhysicsData* physicsData, const decimal& baumgarteFactor, const bool& solvePosition, const bool& lastIteration)
+	void ContactConstraint::solve(PhysicsData* physicsData, const decimal& baumgarteFactor, const decimal& linearSlop, const bool& solvePosition, const bool& lastIteration)
 	{
-		for (uint32 x = 0; x < this->contactPointCount; ++x) {
+		StackArray<RigidBody*, 2> bodies;
+		StackArray<decimal, 2> invMass;
+		for (byte y = 0; y < 2; ++y) if (isAValidIndex(this->objectIndex[y])) {
+			bodies[y] = &physicsData->physicsObjects[this->objectIndex[y]].rigidBody;
+			invMass[y] = bodies[y]->invMass;
+		}
 
-			StackArray<decimal, 2> invMass;
-			for (uint32 y = 0; y < 2; ++y) if (this->bodies[y]) {
-				invMass[y] = this->bodies[y]->invMass;
-			}
+		for (uint32 x = 0; x < this->contactPointCount; ++x) {
 
 			decimal maxFriction = this->contactData[x].penetrationConstraint.totalLambda * this->frictionCoefficient;
 
 			//friction1
-			this->contactData[x].frictionConstraint1.solveVelocity(this->contactData[x].tangent1, this->bodies, invMass, -maxFriction, maxFriction);
+			this->contactData[x].frictionConstraint1.solveVelocity(this->contactData[x].tangent1, bodies, invMass, -maxFriction, maxFriction);
 
 			//friction2
-			this->contactData[x].frictionConstraint2.solveVelocity(this->contactData[x].tangent2, this->bodies, invMass, -maxFriction, maxFriction);
+			this->contactData[x].frictionConstraint2.solveVelocity(this->contactData[x].tangent2, bodies, invMass, -maxFriction, maxFriction);
 
 			//penetration
-			this->contactData[x].penetrationConstraint.solveVelocity(this->contactData[x].normal, this->bodies, invMass, decimal(0.0), decimalMAX);
+			this->contactData[x].penetrationConstraint.solveVelocity(this->contactData[x].normal, bodies, invMass, decimal(0.0), decimalMAX);
 
 			//position resolution
 			if (solvePosition) {
-				if (this->contactData[x].penetration < -physicsData->linearSlop) {
-					this->contactData[x].penetrationConstraint.solvePosition(this->contactData[x].normal, this->bodies, invMass, baumgarteFactor, this->contactData[x].penetration);
+				if (this->contactData[x].penetration < -linearSlop) {
+					this->contactData[x].penetrationConstraint.solvePosition(this->contactData[x].normal, bodies, invMass, baumgarteFactor, this->contactData[x].penetration);
 				}
 			}
 		}
@@ -149,7 +158,7 @@ namespace mech {
 
 			//cache impulses
 			ImpulseCache& impulseCache = physicsData->contactImpulseCache.find(this->impulseCacheID)->second;
-			for (uint32 x = 0; x < this->contactPointCount; ++x) {
+			for (byte x = 0; x < this->contactPointCount; ++x) {
 
 				ImpulseCache::Impulse impulse;
 				impulse.antiPenetrationImpulse = this->contactData[x].penetrationConstraint.totalLambda;
@@ -158,9 +167,16 @@ namespace mech {
 
 				impulseCache.impulses.pushBack(Pair<uint32, ImpulseCache::Impulse>(this->contactData[x].ID, impulse));
 			}
-			impulseCache.retention = physicsData->framesToRetainCache;
-			
-			this->bodies[0]->activate(physicsData);
+			impulseCache.retention = physicsData->configurations.framesToRetainCache;
+
+			if (isAValidIndex(physicsData->physicsObjects[this->objectIndex[0]].islandIndex)) {
+				for (auto it = physicsData->islands[physicsData->physicsObjects[this->objectIndex[0]].islandIndex].begin(), end = physicsData->islands[physicsData->physicsObjects[this->objectIndex[0]].islandIndex].end(); it != end; ++it) {
+					physicsData->physicsObjects[it.data().second.objectIndex].rigidBody.activate();
+				}
+			}
+			else {
+				bodies[0]->activate();
+			}
 		}
 	}
 }

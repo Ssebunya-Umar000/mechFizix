@@ -32,8 +32,8 @@ namespace mech {
 
 	template<typename T1, typename T2>
 	struct Pair {
-		T2 second;
 		T1 first;
+		T2 second;
 
 		Pair() : second(T2()), first(T1()) {}
 		Pair(const T1& f) : second(T2()), first(f) {}

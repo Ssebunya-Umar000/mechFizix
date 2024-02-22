@@ -40,6 +40,7 @@
 
 #include"algorithms/SAT.h"
 #include"algorithms/GJK.h"
+#include"../../math/transform.h"
 
 namespace mech {
 	
@@ -204,15 +205,15 @@ namespace mech {
 		return magnitudeSq(closest - this->capsuleLine.closestPoint(closest)) <= this->radius * this->radius;
 	}
 
-	void Capsule::transform(const Mat4x4& mat)
+	void Capsule::transform(const Transform3D& t)
 	{
-		this->capsuleLine = this->capsuleLine.transformed(mat);
+		this->capsuleLine = this->capsuleLine.transformed(t);
 	}
 
-	Capsule Capsule::transformed(const Mat4x4& mat) const
+	Capsule Capsule::transformed(const Transform3D& t) const
 	{
 		Capsule c = *this;
-		c.transform(mat);
+		c.transform(t);
 		return c;
 	}
 }

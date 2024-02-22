@@ -34,7 +34,7 @@
 
 namespace mech {
 
-#if mechDOUBLE_PRECISION
+#if mech_ENABLE_DOUBLE_PRECISION
 
 #define decimal double
 

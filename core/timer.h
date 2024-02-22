@@ -33,6 +33,7 @@
 namespace mech {
 
 	struct Timer {
+		
 		std::chrono::time_point<std::chrono::high_resolution_clock> startPoint;
 
 		Timer()
@@ -74,6 +75,34 @@ namespace mech {
 			std::chrono::time_point<std::chrono::high_resolution_clock> end = std::chrono::high_resolution_clock::now();
 			std::chrono::duration<double> duration = std::chrono::duration_cast<std::chrono::nanoseconds>(end - this->startPoint);
 			this->startPoint = end;
+			return duration.count();
+		}
+
+		double currentSeconds()
+		{
+			std::chrono::time_point<std::chrono::high_resolution_clock> end = std::chrono::high_resolution_clock::now();
+			std::chrono::duration<double> duration = end - this->startPoint;
+			return duration.count();
+		}
+
+		double currentMilliSeconds()
+		{
+			std::chrono::time_point<std::chrono::high_resolution_clock> end = std::chrono::high_resolution_clock::now();
+			std::chrono::duration<double> duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - this->startPoint);
+			return duration.count();
+		}
+
+		double currentMicroSeconds()
+		{
+			std::chrono::time_point<std::chrono::high_resolution_clock> end = std::chrono::high_resolution_clock::now();
+			std::chrono::duration<double> duration = std::chrono::duration_cast<std::chrono::microseconds>(end - this->startPoint);
+			return duration.count();
+		}
+
+		double currentNanoSeconds()
+		{
+			std::chrono::time_point<std::chrono::high_resolution_clock> end = std::chrono::high_resolution_clock::now();
+			std::chrono::duration<double> duration = std::chrono::duration_cast<std::chrono::nanoseconds>(end - this->startPoint);
 			return duration.count();
 		}
 	};

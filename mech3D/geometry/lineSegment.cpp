@@ -40,6 +40,7 @@
 
 #include"algorithms/SAT.h"
 #include"algorithms/GJK.h"
+#include"../../math/transform.h"
 
 namespace mech { 
 
@@ -230,16 +231,16 @@ namespace mech {
 		return d1 <= decimal(0.0) && d1 >= decimal(1.0) && d2 <= decimal(0.0) && d2 >= decimal(1.0);
 	}
 
-	void LineSegment::transform(const Mat4x4& mat)
+	void LineSegment::transform(const Transform3D& t)
 	{
-		this->start = mat * this->start;
-		this->end = mat * this->end;
+		this->start = t * this->start;
+		this->end = t * this->end;
 	}
 
-	LineSegment LineSegment::transformed(const Mat4x4& mat) const
+	LineSegment LineSegment::transformed(const Transform3D& t) const
 	{
 		LineSegment l = *this;
-		l.transform(mat);
+		l.transform(t);
 		return l;
 	}
 }

@@ -44,7 +44,7 @@ namespace mech {
 	struct Ray;
 	struct LineSegment;
 
-	struct Mat4x4;
+	struct Transform3D;
 
 	struct Polygon {
 		HybridArray<Vec3, 4, byte> vertices;
@@ -89,10 +89,25 @@ namespace mech {
 		bool intersects(const Ray& ray) const;
 		bool intersects(const LineSegment& lineSegment) const;
 
-		void transform(const Mat4x4& mat);
-		Polygon transformed(const Mat4x4& mat) const;
+		void transform(const Transform3D& t);
+		Polygon transformed(const Transform3D& t) const;
 
 		Vec3 clip(const LineSegment& lineSegment) const;
+
+		String toString() const
+		{
+			String string = String("Polygon::numOfVertices: ") + toString1(this->vertices.size()) + String(" (");
+			for (byte x = 0, len = this->vertices.size(); x < len; ++x) {
+				string += this->vertices[x].toString();
+				if (x < len - 1) {
+					string += String(", ");
+				}
+				else {
+					string += String(")");
+				}
+			}
+			return string;
+		}
 	};
 }
 

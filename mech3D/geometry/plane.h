@@ -77,6 +77,8 @@ namespace mech {
 		bool intersects(const LineSegment& lineSegment) const;
 
 		Vec3 clip(const LineSegment& lineSegment) const;
+
+		String toString() const { return String("Plane(normal:") + this->normal.toString() + String(" distance:") + toString2(this->distance) + String(")"); }
 	};
 }
 
