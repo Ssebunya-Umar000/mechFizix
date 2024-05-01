@@ -52,38 +52,50 @@ namespace mech {
 		TriangleDiagonalMode::oneToFour - diagonal connects point 1 to point 4
 		TriangleDiagonalMode::twoTothree - diagonal connects point 2 to point 2
 	*/
+
 	//////////////////////////////////////////////////////////////////////////////////////////////////////////
 	enum class TriangleDiagonalMode : byte { none = 0, oneToFour = 1 << 0, twoTothree = 1 << 1 };
 
 	//////////////////////////////////////////////////////////////////////////////////////////////////////////
-	struct HeightField {
+	enum class HeightFieldType : byte { none = 0, flat = 1 << 0, bumpy = 1 << 1 };
 
-		struct Parameters {
-			float* heightData = nullptr;
-			float gridSize = 0.0;
-			float drift = 0.0;
-			uint16 numOfCellsAlongXandZ = 0;
-			TriangleDiagonalMode diagonalMode = TriangleDiagonalMode::none;
-		};
+	//////////////////////////////////////////////////////////////////////////////////////////////////////////
+	struct FlatTerrainParameters {
+		Vec2 min;
+		Vec2 max;
+		float height = 0.0;
+	};
 
+	//////////////////////////////////////////////////////////////////////////////////////////////////////////
+	struct BumpyTerrainParameters {
 		float* heightData = nullptr;
 		float gridSize = 0.0;
 		float drift = 0.0;
 		uint16 numOfCellsAlongXandZ = 0;
 		TriangleDiagonalMode diagonalMode = TriangleDiagonalMode::none;
+	};
 
-		void initialise(const Parameters& params)
+	//////////////////////////////////////////////////////////////////////////////////////////////////////////
+	struct HeightField {
+
+		BumpyTerrainParameters* bumpy = nullptr;
+		FlatTerrainParameters* flat = nullptr;
+		HeightFieldType heightFieldType = HeightFieldType::none;
+
+		void initialise(BumpyTerrainParameters* params)
 		{
-			this->heightData = params.heightData;
-			this->gridSize = params.gridSize;
-			this->drift = params.drift;
-			this->numOfCellsAlongXandZ = params.numOfCellsAlongXandZ;
+			this->bumpy = params;
+			this->heightFieldType = HeightFieldType::bumpy;
+		}
+
+		void initialise(FlatTerrainParameters* params)
+		{
+			this->flat = params;
+			this->heightFieldType = HeightFieldType::flat;
 		}
 
 		void gridIndicies(const AABB& aabb, float& minX, float& maxX, float& minZ, float& maxZ) const
 		{
-			ASSERT(this->heightData != nullptr, "no height data!!, initialise heightField first");
-
 			minX = FLT_MAX;
 			maxX = -FLT_MAX;
 			minZ = FLT_MAX;
@@ -92,144 +104,176 @@ namespace mech {
 			Vec3 points[2] = { aabb.min, aabb.max };
 			for (byte i = 0; i < 2; ++i) {
 
-				float gridX = (points[i].x - this->drift) / this->gridSize;
+				float gridX = (points[i].x - this->bumpy->drift) / this->bumpy->gridSize;
 				minX = gridX < minX ? gridX : minX;
 				maxX = gridX > maxX ? gridX : maxX;
 
-				float gridZ = (points[i].z - this->drift) / this->gridSize;
+				float gridZ = (points[i].z - this->bumpy->drift) / this->bumpy->gridSize;
 				minZ = gridZ < minZ ? gridZ : minZ;
 				maxZ = gridZ > maxZ ? gridZ : maxZ;
 			}
 
 			minX = mathMAX(minX, 0.0);
 			minZ = mathMAX(minZ, 0.0);
-			maxX = mathMIN(maxX, this->numOfCellsAlongXandZ - 1);
-			maxZ = mathMIN(maxZ, this->numOfCellsAlongXandZ - 1);
+			maxX = mathMIN(maxX, this->bumpy->numOfCellsAlongXandZ - 1);
+			maxZ = mathMIN(maxZ, this->bumpy->numOfCellsAlongXandZ - 1);
 		}
 
 		bool intersects(const AABB& aabb) const
 		{
-			float minX, maxX, minZ, maxZ;
-			gridIndicies(aabb, minX, maxX, minZ, maxZ);
-			if (maxX < 0) return false;
+			if (this->heightFieldType == HeightFieldType::bumpy) {
+				
+				float minX, maxX, minZ, maxZ;
+				gridIndicies(aabb, minX, maxX, minZ, maxZ);
+				if (maxX < 0) return false;
 
-			float maxHeight = -FLT_MAX;
-			float minHeight = FLT_MAX;
+				float maxHeight = -FLT_MAX;
+				float minHeight = FLT_MAX;
 
-			for (uint32 z = minZ; z <= maxZ; ++z) {
-				for (uint32 x = minX; x <= maxX; ++x) {
+				for (uint32 z = minZ; z <= maxZ; ++z) {
+					for (uint32 x = minX; x <= maxX; ++x) {
 
-					float h[4];
-					h[0] = this->heightData[(z * this->numOfCellsAlongXandZ) + x];
-					h[1] = this->heightData[((z + 1) * this->numOfCellsAlongXandZ) + x];
-					h[2] = this->heightData[(z * this->numOfCellsAlongXandZ) + (x + 1)];
-					h[3] = this->heightData[((z + 1) * this->numOfCellsAlongXandZ) + (x + 1)];
+						float h[4];
+						h[0] = this->bumpy->heightData[(z * this->bumpy->numOfCellsAlongXandZ) + x];
+						h[1] = this->bumpy->heightData[((z + 1) * this->bumpy->numOfCellsAlongXandZ) + x];
+						h[2] = this->bumpy->heightData[(z * this->bumpy->numOfCellsAlongXandZ) + (x + 1)];
+						h[3] = this->bumpy->heightData[((z + 1) * this->bumpy->numOfCellsAlongXandZ) + (x + 1)];
 
-					for (byte i = 0; i < 4; ++i) {
-						maxHeight = mathMAX(h[i], maxHeight);
-						minHeight = mathMIN(h[i], minHeight);
+						for (byte i = 0; i < 4; ++i) {
+							maxHeight = mathMAX(h[i], maxHeight);
+							minHeight = mathMIN(h[i], minHeight);
+						}
 					}
 				}
+
+				return (aabb.min.y <= maxHeight && aabb.min.y >= minHeight) ||
+					(aabb.max.y <= maxHeight && aabb.max.y >= minHeight) ||
+					(aabb.max.y >= maxHeight && aabb.min.y <= minHeight);
+			}
+			else if (this->heightFieldType == HeightFieldType::flat) {
+
+				return (aabb.min.y <= this->flat->height && aabb.min.y >= this->flat->height) ||
+					(aabb.max.y <= this->flat->height && aabb.max.y >= this->flat->height) ||
+					(aabb.max.y >= this->flat->height && aabb.min.y <= this->flat->height);
 			}
 
-			return (aabb.min.y <= maxHeight && aabb.min.y >= minHeight) ||
-				   (aabb.max.y <= maxHeight && aabb.max.y >= minHeight) ||
-				   (aabb.max.y >= maxHeight && aabb.min.y <= minHeight);
+			ASSERT(false, "heightFeild was not initialised");
+			return false;
 		}
 
 		void getTrianglesOverlapped(const AABB& aabb, HybridArray<Triangle, 24, uint16>& triangles) const
 		{
-			float minX, maxX, minZ, maxZ;
-			gridIndicies(aabb, minX, maxX, minZ, maxZ);
-			if (maxX < 0) return;
+			if (this->heightFieldType == HeightFieldType::bumpy) {
 
-			for (uint32 z = minZ; z <= maxZ; ++z) {
+				float minX, maxX, minZ, maxZ;
+				gridIndicies(aabb, minX, maxX, minZ, maxZ);
+				if (maxX < 0) return;
 
-				float zCord1 = z * this->gridSize + this->drift;
-				float zCord2 = zCord1 + this->gridSize;
+				for (uint32 z = minZ; z <= maxZ; ++z) {
 
-				for (uint32 x = minX; x <= maxX; ++x) {
+					float zCord1 = z * this->bumpy->gridSize + this->bumpy->drift;
+					float zCord2 = zCord1 + this->bumpy->gridSize;
 
-					float xCord1 = x * this->gridSize + this->drift;
-					float xCord2 = xCord1 + this->gridSize;
+					for (uint32 x = minX; x <= maxX; ++x) {
 
-					Vec3 a1 = Vec3(xCord1, this->heightData[(z *       this->numOfCellsAlongXandZ) + x],       zCord1);
-					Vec3 a2 = Vec3(xCord1, this->heightData[((z + 1) * this->numOfCellsAlongXandZ) + x],       zCord2);
-					Vec3 a3 = Vec3(xCord2, this->heightData[(z *       this->numOfCellsAlongXandZ) + (x + 1)], zCord1);
-					Vec3 a4 = Vec3(xCord2, this->heightData[((z + 1) * this->numOfCellsAlongXandZ) + (x + 1)], zCord2);
+						float xCord1 = x * this->bumpy->gridSize + this->bumpy->drift;
+						float xCord2 = xCord1 + this->bumpy->gridSize;
 
-					Triangle t[2];
-					if (this->diagonalMode == TriangleDiagonalMode::oneToFour) {
-						t[0] = Triangle(a1, a2, a4);
-						t[1] = Triangle(a4, a3, a1);
-					}
-					else {
-						t[0] = Triangle(a1, a2, a3);
-						t[1] = Triangle(a3, a2, a4);
-					}
+						Vec3 a1 = Vec3(xCord1, this->bumpy->heightData[(z * this->bumpy->numOfCellsAlongXandZ) + x], zCord1);
+						Vec3 a2 = Vec3(xCord1, this->bumpy->heightData[((z + 1) * this->bumpy->numOfCellsAlongXandZ) + x], zCord2);
+						Vec3 a3 = Vec3(xCord2, this->bumpy->heightData[(z * this->bumpy->numOfCellsAlongXandZ) + (x + 1)], zCord1);
+						Vec3 a4 = Vec3(xCord2, this->bumpy->heightData[((z + 1) * this->bumpy->numOfCellsAlongXandZ) + (x + 1)], zCord2);
 
-					for (byte i = 0; i < 2; ++i) {
-						if (aabb.intersects(t[i])) {
-							triangles.pushBack(t[i]);
+						Triangle t[2];
+						if (this->bumpy->diagonalMode == TriangleDiagonalMode::oneToFour) {
+							t[0] = Triangle(a1, a2, a4);
+							t[1] = Triangle(a4, a3, a1);
+						}
+						else {
+							t[0] = Triangle(a1, a2, a3);
+							t[1] = Triangle(a3, a2, a4);
+						}
+
+						for (byte i = 0; i < 2; ++i) {
+							if (aabb.intersects(t[i])) {
+								triangles.pushBack(t[i]);
+							}
 						}
 					}
 				}
 			}
+			else if (this->heightFieldType == HeightFieldType::flat) {
+
+				Triangle t[2] = {Triangle(Vec3(this->flat->min.x, this->flat->height, this->flat->min.y), Vec3(this->flat->min.x, this->flat->height, this->flat->max.y), Vec3(this->flat->max.x, this->flat->height, this->flat->max.y)), Triangle(Vec3(this->flat->min.x, this->flat->height, this->flat->min.y), Vec3(this->flat->max.x, this->flat->height, this->flat->max.y), Vec3(this->flat->max.x, this->flat->height, this->flat->min.y))};
+				for (byte i = 0; i < 2; ++i) {
+					if (aabb.intersects(t[i])) {
+						triangles.pushBack(t[i]);
+					}
+				}
+			}
+
+			ASSERT(false, "heightFeild was not initialised");
 		}
 
 		float getHeight(const float& x, const float& z) const
 		{
-			ASSERT(this->heightData != nullptr, "no height data!!, initialise heightField first");
+			if (this->heightFieldType == HeightFieldType::bumpy) {
+				
+				float heightFieldX = x - this->bumpy->drift;
+				float heightFieldZ = z - this->bumpy->drift;
 
-			float heightFieldX = x - this->drift;
-			float heightFieldZ = z - this->drift;
+				int32 gridX = int(heightFieldX / this->bumpy->gridSize);
+				int32 gridZ = int(heightFieldZ / this->bumpy->gridSize);
 
-			int32 gridX = int(heightFieldX / this->gridSize);
-			int32 gridZ = int(heightFieldZ / this->gridSize);
+				if (gridX < 0 || gridX > this->bumpy->numOfCellsAlongXandZ || gridZ < 0 || gridZ > this->bumpy->numOfCellsAlongXandZ) return decimalNAN;
 
-			if (gridX < 0 || gridX > this->numOfCellsAlongXandZ || gridZ < 0 || gridZ > this->numOfCellsAlongXandZ) return decimalNAN;
+				gridX = gridX == this->bumpy->numOfCellsAlongXandZ ? gridX - 1 : gridX;
+				gridZ = gridZ == this->bumpy->numOfCellsAlongXandZ ? gridZ - 1 : gridZ;
 
-			gridX = gridX == this->numOfCellsAlongXandZ ? gridX - 1 : gridX;
-			gridZ = gridZ == this->numOfCellsAlongXandZ ? gridZ - 1 : gridZ;
+				float xpos = heightFieldX - gridX * this->bumpy->gridSize;
+				float zpos = heightFieldZ - gridZ * this->bumpy->gridSize;
 
-			float xpos = heightFieldX - gridX * this->gridSize;
-			float zpos = heightFieldZ - gridZ * this->gridSize;
+				Vec3 p1, p2, p3;
+				if (this->bumpy->diagonalMode == TriangleDiagonalMode::oneToFour) {
 
-			Vec3 p1, p2, p3;
-			if (this->diagonalMode == TriangleDiagonalMode::oneToFour) {
-
-				if (xpos / this->gridSize >= (1 - zpos / this->gridSize)) {
-					p1 = Vec3(float(0.0),   this->heightData[(gridZ * this->numOfCellsAlongXandZ) +         gridX     ], float(0.0));
-					p2 = Vec3(float(0.0),   this->heightData[(gridZ * this->numOfCellsAlongXandZ) +        (gridX + 1)], this->gridSize);
-					p3 = Vec3(this->gridSize, this->heightData[((gridZ + 1) * this->numOfCellsAlongXandZ) +  (gridX + 1)], this->gridSize);
+					if (xpos / this->bumpy->gridSize >= (1 - zpos / this->bumpy->gridSize)) {
+						p1 = Vec3(float(0.0), this->bumpy->heightData[(gridZ * this->bumpy->numOfCellsAlongXandZ) + gridX], float(0.0));
+						p2 = Vec3(float(0.0), this->bumpy->heightData[(gridZ * this->bumpy->numOfCellsAlongXandZ) + (gridX + 1)], this->bumpy->gridSize);
+						p3 = Vec3(this->bumpy->gridSize, this->bumpy->heightData[((gridZ + 1) * this->bumpy->numOfCellsAlongXandZ) + (gridX + 1)], this->bumpy->gridSize);
+					}
+					else {
+						p1 = Vec3(float(0.0), this->bumpy->heightData[(gridZ * this->bumpy->numOfCellsAlongXandZ) + gridX], float(0.0));
+						p2 = Vec3(this->bumpy->gridSize, this->bumpy->heightData[((gridZ + 1) * this->bumpy->numOfCellsAlongXandZ) + (gridX + 1)], this->bumpy->gridSize);
+						p3 = Vec3(this->bumpy->gridSize, this->bumpy->heightData[((gridZ + 1) * this->bumpy->numOfCellsAlongXandZ) + gridX], float(0.0));
+					}
 				}
 				else {
-					p1 = Vec3(float(0.0),   this->heightData[(gridZ * this->numOfCellsAlongXandZ) +         gridX     ], float(0.0));
-					p2 = Vec3(this->gridSize, this->heightData[((gridZ + 1) * this->numOfCellsAlongXandZ) +  (gridX + 1)], this->gridSize);
-					p3 = Vec3(this->gridSize, this->heightData[((gridZ + 1) * this->numOfCellsAlongXandZ) +   gridX     ], float(0.0));
+
+					if (xpos / this->bumpy->gridSize <= (1 - zpos / this->bumpy->gridSize)) {
+						p1 = Vec3(float(0.0), this->bumpy->heightData[(gridZ * this->bumpy->numOfCellsAlongXandZ) + gridX], float(0.0));
+						p2 = Vec3(float(0.0), this->bumpy->heightData[(gridZ * this->bumpy->numOfCellsAlongXandZ) + (gridX + 1)], this->bumpy->gridSize);
+						p3 = Vec3(this->bumpy->gridSize, this->bumpy->heightData[((gridZ + 1) * this->bumpy->numOfCellsAlongXandZ) + gridX], float(0.0));
+					}
+					else {
+						p1 = Vec3(this->bumpy->gridSize, this->bumpy->heightData[((gridZ + 1) * this->bumpy->numOfCellsAlongXandZ) + gridX], float(0.0));
+						p2 = Vec3(float(0.0), this->bumpy->heightData[(gridZ * this->bumpy->numOfCellsAlongXandZ) + (gridX + 1)], this->bumpy->gridSize);
+						p3 = Vec3(this->bumpy->gridSize, this->bumpy->heightData[((gridZ + 1) * this->bumpy->numOfCellsAlongXandZ) + (gridX + 1)], this->bumpy->gridSize);
+					}
 				}
+
+				float det = (p2.z - p3.z) * (p1.x - p3.x) + (p3.x - p2.x) * (p1.z - p3.z);
+
+				float l1 = ((p2.z - p3.z) * (xpos - p3.x) + (p3.x - p2.x) * (zpos - p3.z)) / det;
+				float l2 = ((p3.z - p1.z) * (xpos - p3.x) + (p1.x - p3.x) * (zpos - p3.z)) / det;
+				float l3 = float(1.0) - l1 - l2;
+
+				return l1 * p1.y + l2 * p2.y + l3 * p3.y;
 			}
-			else {
-
-				if (xpos / this->gridSize <= (1 - zpos / this->gridSize)) {
-					p1 = Vec3(float(0.0),   this->heightData[(gridZ * this->numOfCellsAlongXandZ) +         gridX     ], float(0.0));
-					p2 = Vec3(float(0.0),   this->heightData[(gridZ * this->numOfCellsAlongXandZ) +        (gridX + 1)], this->gridSize);
-					p3 = Vec3(this->gridSize, this->heightData[((gridZ + 1) * this->numOfCellsAlongXandZ) +   gridX     ], float(0.0));
-				}
-				else {
-					p1 = Vec3(this->gridSize, this->heightData[((gridZ + 1) * this->numOfCellsAlongXandZ) +   gridX     ], float(0.0));
-					p2 = Vec3(float(0.0),   this->heightData[(gridZ * this->numOfCellsAlongXandZ) +        (gridX + 1)], this->gridSize);
-					p3 = Vec3(this->gridSize, this->heightData[((gridZ + 1) * this->numOfCellsAlongXandZ) +  (gridX + 1)], this->gridSize);
-				}
+			else if (this->heightFieldType == HeightFieldType::flat) {
+				return this->flat->height;
 			}
 
-			float det = (p2.z - p3.z) * (p1.x - p3.x) + (p3.x - p2.x) * (p1.z - p3.z);
-
-			float l1 = ((p2.z - p3.z) * (xpos - p3.x) + (p3.x - p2.x) * (zpos - p3.z)) / det;
-			float l2 = ((p3.z - p1.z) * (xpos - p3.x) + (p1.x - p3.x) * (zpos - p3.z)) / det;
-			float l3 = float(1.0) - l1 - l2;
-
-			return l1 * p1.y + l2 * p2.y + l3 * p3.y;
+			ASSERT(false, "heightFeild was not initialised");
 		}
 	};
 }
