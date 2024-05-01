@@ -7,26 +7,21 @@ https://github.com/Ssebunya-Umar000/mechFizix/assets/159614694/e83fcf4b-8f27-402
 
 
 
-Features
+
+
+
+FEATURES
 -Allocator
-
 -Data containers
-
 -math library
-
 -Geometry library
-
 -Dynamic octree
-
 -Broadphase collision detection
-
 -Narrowphase collision detection
-
 -Constraint resolver
-
 ---and many ohters
 
-how to get started 
+HOW TO GET STARTED 
 
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////
