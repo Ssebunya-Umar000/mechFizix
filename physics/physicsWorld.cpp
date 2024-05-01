@@ -109,7 +109,18 @@ namespace mech {
 		this->mPhysicsData.octree.initialise(bounds, &this->mHeightFieldTest, depth);
 	}
 
-	void PhysicsWorld::initialiseHeightField(const HeightField::Parameters& parameters, const PhysicsMaterial& material)
+	void PhysicsWorld::initialiseHeightField(BumpyTerrainParameters* parameters, const PhysicsMaterial& material)
+	{
+		uint32 colliderID = this->mPhysicsData.colliderIdentifiers.insert(ColliderIdentifier(ColliderType::heightField));
+		this->mPhysicsData.heightFieldCollider.collider.initialise(parameters);
+
+		this->mPhysicsData.colliderIdentifiers[colliderID].colliderID = colliderID;
+		this->mPhysicsData.colliderIdentifiers[colliderID].material = material;
+
+		this->mHeightFieldTest.heightFieldID = colliderID;
+	}
+
+	void PhysicsWorld::initialiseHeightField(FlatTerrainParameters* parameters, const PhysicsMaterial& material)
 	{
 		uint32 colliderID = this->mPhysicsData.colliderIdentifiers.insert(ColliderIdentifier(ColliderType::heightField));
 		this->mPhysicsData.heightFieldCollider.collider.initialise(parameters);
