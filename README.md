@@ -11,7 +11,9 @@ Features
 -Constraint resolver
 ---and many ohters
 
-example usage
+how to get started 
+
+
 /////////////////////////////////////////////////////////////////////////////////////////////////////
 
 
@@ -19,6 +21,7 @@ example usage
 
 int main()
 {
+
 	//Alwalys initialise the allocator first!!
 	initialiseAllocator(nullptr, nullptr);
 	
