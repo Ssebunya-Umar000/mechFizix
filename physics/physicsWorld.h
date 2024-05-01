@@ -63,7 +63,8 @@ namespace mech {
 		void update(const decimal& deltaTime);
 
 		void initialiseOctree(const AABB& bounds, const byte& depth);
-		void initialiseHeightField(const HeightField::Parameters& parameters, const PhysicsMaterial& material);
+		void initialiseHeightField(BumpyTerrainParameters* parameters, const PhysicsMaterial& material);
+		void initialiseHeightField(FlatTerrainParameters* parameters, const PhysicsMaterial& material);
 
 		//colliders
 		uint32 addSphere(const Sphere& sphere, const ColliderMotionState& state, const PhysicsMaterial& material, const Transform3D& offset = Transform3D()); //returns id of the collider
