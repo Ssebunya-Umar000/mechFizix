@@ -1,14 +1,27 @@
 mechFizix is a light weight data oriented 3D physics engine.
 
+DEMO
+https://github.com/Ssebunya-Umar000/mechFizix/assets/159614694/077dc63c-f593-4a04-a3b1-480357d7a5d7
+
+
+
 Features
 -Allocator
+
 -Data containers
+
 -math library
+
 -Geometry library
+
 -Dynamic octree
+
 -Broadphase collision detection
+
 -Narrowphase collision detection
+
 -Constraint resolver
+
 ---and many ohters
 
 how to get started 
