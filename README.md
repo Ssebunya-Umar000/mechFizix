@@ -1,5 +1,10 @@
 mechFizix is a light weight data oriented 3D physics engine.
 
+DEMO
+https://github.com/Ssebunya-Umar000/mechFizix/assets/159614694/e372515a-164a-4ef5-8bd0-ac0beb892555
+
+
+
 Features
 -Allocator
 
